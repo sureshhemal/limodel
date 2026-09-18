@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+output/
+~$*
+.DS_Store
+.idea/
+
+# Reference papers and source spreadsheets (kept locally, not in git)
+*.pdf
+*.docx
+*.xlsx
