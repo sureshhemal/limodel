@@ -100,6 +100,8 @@ Li-Research/
 │   └── data-format.md          ← column definitions and how to create the CSVs
 ├── output/                     ← generated reports (git-ignored)
 ├── notebooks/                  ← exploration
+├── scripts/
+│   └── convert_workbook.py     ← her Excel workbook → the three CSV files
 ├── src/limodel/
 │   ├── __init__.py
 │   ├── schema.py               ← column definitions

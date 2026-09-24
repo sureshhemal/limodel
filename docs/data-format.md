@@ -141,7 +141,19 @@ Anything below the rinse block (the I–V sweep, the limiting-current table, the
 
 Sample IDs run two per sampling time: odd numbers are concentrate, even are diluate, and the rinse starts at 17 (or 19 in runs with nine sampling times, where the main table has used 1–18). Gaps in the numbering are normal.
 
-### Steps
+### Converting with the script
+
+`scripts/convert_workbook.py` does the copying for every `New_set_*` sheet in one go:
+
+```
+uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+```
+
+It rewrites `data/setups.csv`, `data/readings.csv` and `data/samples.csv` from the workbook, and prints anything that looks wrong: sample IDs that do not carry their run's code, and samples with no lab results yet. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what she recorded.
+
+Re-run it whenever she updates the workbook, for instance when new lab results arrive. Because the output is committed to git, the diff then shows exactly which values changed.
+
+### Steps (by hand)
 
 1. **Add the `setups.csv` row** from the header block. Set `include` to `true`, and add a `notes` entry if anything about the run was unusual.
 2. **Append the run's rows to `data/readings.csv`**, one per time mark that has any value, each starting with the experiment code. Skip rows where only the time was written down.
