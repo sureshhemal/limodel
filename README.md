@@ -96,6 +96,8 @@ Li-Research/
 │   ├── setups.csv              ← one row per experiment
 │   ├── readings/               ← <CODE>_readings.csv go here
 │   └── samples/                ← <CODE>_samples.csv go here
+├── docs/
+│   └── data-format.md          ← column definitions and how to create the CSVs
 ├── output/                     ← generated reports (git-ignored)
 ├── notebooks/                  ← exploration
 ├── src/limodel/
@@ -129,49 +131,13 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
-| `setups.csv` | experiment | Membranes, feed, starting concentrate, rinse, flow, area, cell pairs, tare weights, `include`, `notes` | before the run |
-| `readings/<CODE>_readings.csv` | time mark (minute) | Power log (supply and multimeter V/I); tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
-| `samples/<CODE>_samples.csv` | sample | Li, Mg, Na, K, Ca (ICP) and TOC, by `sample_id` | by the lab, later |
+| `setups.csv` | experiment | How the run was set up | before the run |
+| `readings/<CODE>_readings.csv` | time mark (minute) | Power log; tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
+| `samples/<CODE>_samples.csv` | sample | Tank, plus Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
 
-`setups.code` names the other two files (e.g. `AE` → `AE_readings.csv`, `AE_samples.csv`). A sample's time and tank are recorded only in the readings file, through `conc_sample_id`, `dil_sample_id` and `rinse_sample_id`.
+**[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these three files.**
 
-Rules:
-
-- Blank means not measured. Never enter 0 for a missing value.
-- No calculated columns.
-- Units go in column names only; cells hold plain numbers.
-- Same headers, same order, in every file.
-- Membrane names and sample IDs are spelled exactly the same everywhere.
-- Runs that shouldn't be used get `include = false` and a reason in `notes`. They are never deleted.
-
-### `setups.csv` columns
-
-One row per experiment. Only values that were set or weighed out go here. Derived values (Mg/Li mass and molar ratio, flow in cm³/s, velocity, current density, total charge, run length) are calculated by the code.
-
-| Column | Type | Unit | Required | Meaning | Example |
-|---|---|---|---|---|---|
-| `code` | text, unique | | ✓ | Short experiment code. Names the readings and samples files. | `AE` |
-| `series` | text | | ✓ | Group of related runs, so different campaigns stay apart | `new_set_mg` |
-| `run_date` | date | YYYY-MM-DD | ✓ | Date the run was carried out | `2026-07-09` |
-| `cem` | text | | ✓ | Cation exchange membrane | `GO-10` |
-| `aem` | text | | ✓ | Anion exchange membrane | `AR 204` |
-| `li_feed_mg_l` | numeric | mg/L | ✓ | Nominal (target) Li in the feed. The measured value comes from the t = 0 diluate sample. | `400` |
-| `mg_feed_mg_l` | numeric | mg/L | ✓ | Nominal (target) Mg in the feed | `2000` |
-| `licl_g_l` | numeric | g/L | | LiCl actually weighed into the feed | `2.44` |
-| `mgcl2_6h2o_g_l` | numeric | g/L | | MgCl₂·6H₂O actually weighed into the feed | |
-| `conc_start_salt` | text | | ✓ | Salt the concentrate started with: `LiCl`, `NaCl` or `none` | `LiCl` |
-| `conc_start_g_l` | numeric | g/L | ✓ | Amount of that salt in the starting concentrate (0 if `none`) | `0.5` |
-| `rinse_salt` | text | | ✓ | Salt in the electrode rinse solution | `Na2SO4` |
-| `rinse_wt_pct` | numeric | wt% | ✓ | Rinse salt concentration | `2` |
-| `set_current_ma` | numeric | mA | | Current set on the power supply. The actual current comes from the readings. | |
-| `flow_l_min` | numeric | L/min | ✓ | Flow rate of each stream | `0.2` |
-| `area_cm2` | numeric | cm² | ✓ | Effective membrane area per cell pair | `6` |
-| `cell_pairs` | integer | | ✓ | Number of cell pairs in the stack | `10` |
-| `tare_conc_g` | numeric | g | ✓ | Concentrate bucket + stirrer weight for this run. Subtracted from tank weights to get volume. | `96.2` |
-| `tare_dil_g` | numeric | g | ✓ | Diluate bucket + stirrer weight for this run | `111.5` |
-| `tare_rinse_g` | numeric | g | ✓ | Rinse bucket + stirrer weight for this run | `42` |
-| `include` | boolean | `true` / `false` | ✓ | Whether the run is used in the model. Excluded runs stay in the file. | `true` |
-| `notes` | text | | | Why a run is excluded, or anything unusual about it | |
+## The code
 
 ### `src/limodel/`: the science
 
