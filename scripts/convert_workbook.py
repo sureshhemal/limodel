@@ -22,23 +22,29 @@ CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
 DIL = {"id": 24, "conductivity": 25, "ph": 26, "temp": 27, "weight": 28,
        "li": 29, "na": 30, "mg": 31, "k": 32, "ca": 33, "toc": 34}
 
+# Issue codes the script can set by itself. checks.py decides what each one means.
+UNLABELLED_VALUES = "UNLABELLED_VALUES"  # lab values in a row that carries no sample ID
+
 SETUP_FIELDS = ["code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
                 "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",
                 "rinse_salt", "rinse_wt_pct", "set_current_ma", "flow_l_min", "area_cm2",
-                "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include", "notes"]
+                "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include", "issue_code", "notes"]
 
 READING_FIELDS = (["experiment_code", "minute"] + list(POWER)
                   + [f"{t}_{m}" for t in ("conc", "dil", "rinse")
                      for m in ("conductivity_us_cm", "ph", "temp_c", "weight_g")]
-                  + ["conc_sample_id", "dil_sample_id", "rinse_sample_id", "notes"])
+                  + ["conc_sample_id", "dil_sample_id", "rinse_sample_id", "issue_code", "notes"])
 
 SAMPLE_FIELDS = ["experiment_code", "sample_id", "tank", "li_mg_l", "mg_mg_l",
-                 "na_mg_l", "k_mg_l", "ca_mg_l", "toc_ppm", "notes"]
+                 "na_mg_l", "k_mg_l", "ca_mg_l", "toc_ppm", "issue_code", "notes"]
 
 
 def plain(number):
     """Write 2.0 as 2, so values look as they do in the sheet."""
     return int(number) if float(number).is_integer() else number
+
+
+IGNORED_WHEN_EMPTY = {"experiment_code", "minute", "issue_code", "notes"}
 
 
 def blank(value):
@@ -100,6 +106,7 @@ def read_setup(ws, code):
         "tare_dil_g": blank(ws.cell(3, 25).value),
         "tare_rinse_g": blank(ws.cell(4, 25).value),
         "include": "true",
+        "issue_code": "",
         "notes": "",
     }
 
@@ -114,6 +121,19 @@ def read_tank(ws, row, cols):
     }
 
 
+def orphan_values(ws, row):
+    """Lab values sitting in a row that has no sample ID, so they belong to no sample."""
+    found = []
+    for prefix, cols in (("conc", CONC), ("dil", DIL)):
+        if blank(ws.cell(row, cols["id"]).value):
+            continue
+        for measure in ("li", "na", "mg", "k", "ca", "toc"):
+            value = blank(ws.cell(row, cols[measure]).value)
+            if value != "":
+                found.append(f"{prefix}_{measure}={value}")
+    return found
+
+
 def read_sample(ws, row, cols, code, tank):
     return {
         "experiment_code": code,
@@ -125,6 +145,7 @@ def read_sample(ws, row, cols, code, tank):
         "k_mg_l": blank(ws.cell(row, cols["k"]).value),
         "ca_mg_l": blank(ws.cell(row, cols["ca"]).value),
         "toc_ppm": blank(ws.cell(row, cols["toc"]).value),
+        "issue_code": "",
         "notes": "",
     }
 
@@ -152,14 +173,21 @@ def convert_sheet(ws, code):
             continue
         conc, dil = read_tank(ws, r, CONC), read_tank(ws, r, DIL)
         rinse = rinse_by_minute.get(int(minute), {})
-        row = {"experiment_code": code, "minute": int(minute), "notes": ""}
+        row = {"experiment_code": code, "minute": int(minute), "issue_code": "", "notes": ""}
         for field, col in POWER.items():
             row[field] = blank(ws.cell(r, col).value)
         for prefix, tank in (("conc", conc), ("dil", dil), ("rinse", rinse)):
             for measure in ("conductivity_us_cm", "ph", "temp_c", "weight_g"):
                 row[f"{prefix}_{measure}"] = tank.get(measure, "")
             row[f"{prefix}_sample_id"] = tank.get("id", "")
-        if any(row[f] != "" for f in READING_FIELDS if f not in ("experiment_code", "minute", "notes")):
+        orphans = orphan_values(ws, r)
+        has_readings = any(row[f] != "" for f in READING_FIELDS if f not in IGNORED_WHEN_EMPTY)
+        if orphans:
+            values = ", ".join(orphans)
+            row["issue_code"] = UNLABELLED_VALUES
+            row["notes"] = values
+            warnings.append(f"{code}: minute {int(minute)} has {values} but no sample ID")
+        if orphans or has_readings:
             readings.append(row)
         if conc["id"]:
             samples.append(read_sample(ws, r, CONC, code, "conc"))

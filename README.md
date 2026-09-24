@@ -101,7 +101,8 @@ Li-Research/
 ├── output/                     ← generated reports (git-ignored)
 ├── notebooks/                  ← exploration
 ├── scripts/
-│   └── convert_workbook.py     ← her Excel workbook → the three CSV files
+│   ├── convert_workbook.py     ← her Excel workbook → the three CSV files
+│   └── verify_against_workbook.py  ← checks every CSV value against the workbook
 ├── src/limodel/
 │   ├── __init__.py
 │   ├── schema.py               ← column definitions

@@ -153,6 +153,26 @@ It rewrites `data/setups.csv`, `data/readings.csv` and `data/samples.csv` from t
 
 Re-run it whenever she updates the workbook, for instance when new lab results arrive. Because the output is committed to git, the diff then shows exactly which values changed.
 
+### Checking the copy
+
+`scripts/verify_against_workbook.py` compares every value in the three CSV files against the cell it came from, and reports anything in the sheets that did not reach the CSVs:
+
+```
+uv run python scripts/verify_against_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+```
+
+It walks the workbook itself rather than trusting the converter, so a mistake in the converter shows up as a difference.
+
+### `issue_code`
+
+All three files carry an `issue_code` column, blank unless something is known to be wrong with that row. It records **what is wrong**, never what to do about it; `checks.py` decides that, so the policy can change without editing data. `notes` beside it holds the human explanation.
+
+| Code | Meaning | Set by |
+|---|---|---|
+| `UNLABELLED_VALUES` | Lab values recorded in a row that carries no sample ID, so they belong to no sample | the converter |
+
+Codes are a short controlled list, kept in `schema.py`; an unknown code is an error. Add a new one only when a real case needs it. Problems the code can work out for itself — mislabelled sample IDs, duplicates, out-of-range values, missing lab results — are **not** stored here, because `checks.py` re-derives them on every run and they would otherwise go stale.
+
 ### Steps (by hand)
 
 1. **Add the `setups.csv` row** from the header block. Set `include` to `true`, and add a `notes` entry if anything about the run was unusual.
