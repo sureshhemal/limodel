@@ -10,10 +10,10 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
 | `setups.csv` | experiment | Membranes, feed, starting concentrate, rinse, flow, area, cell pairs, tare weights, `include`, `notes` | before the run |
-| `readings/<CODE>_readings.csv` | time mark (minute) | Power log (supply and multimeter V/I); tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
-| `samples/<CODE>_samples.csv` | sample | Which tank the sample came from, plus Li, Mg, Na, K, Ca (ICP) and TOC, by `sample_id` | by the lab, later |
+| `readings.csv` | time mark of a run | Power log (supply and multimeter V/I); tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
+| `samples.csv` | sample | Which tank the sample came from, plus Li, Mg, Na, K, Ca (ICP) and TOC, by `sample_id` | by the lab, later |
 
-`setups.code` names the other two files (e.g. `AE` → `AE_readings.csv`, `AE_samples.csv`). A sample's time comes from the readings file, through `conc_sample_id`, `dil_sample_id` and `rinse_sample_id`; those columns are also what decides which tank a sample belongs to. The samples file repeats the tank in its own `tank` column (`conc` / `dil` / `rinse`) so the lab results are readable on their own — it is a cross-check, not the authority, and `checks.py` reports any sample where the two disagree.
+All runs share the same two files; `experiment_code` says which run a row belongs to, and it must match a `code` in `setups.csv`. Each file is one future PostgreSQL table. A sample's time comes from the readings file, through `conc_sample_id`, `dil_sample_id` and `rinse_sample_id`; those columns are also what decides which tank a sample belongs to. The samples file repeats the tank in its own `tank` column (`conc` / `dil` / `rinse`) so the lab results are readable on their own — it is a cross-check, not the authority, and `checks.py` reports any sample where the two disagree.
 
 Rules:
 
@@ -55,13 +55,14 @@ One row per experiment. Only values that were set or weighed out go here. Derive
 | `include` | boolean | `true` / `false` | ✓ | Whether the run is used in the model. Excluded runs stay in the file. | `true` |
 | `notes` | text | | | Why a run is excluded, or anything unusual about it | |
 
-### `<CODE>_readings.csv`
+### `readings.csv`
 
-One row per time mark, in `data/readings/`. Everything recorded at the rig. Blank where a value was not measured at that minute.
+One row per time mark of a run. Everything recorded at the rig. Blank where a value was not measured at that minute.
 
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
-| `minute` | integer | min | Elapsed time from the start of the run. Unique within the file. |
+| `experiment_code` | text → `setups.code` | | Which run this row belongs to |
+| `minute` | integer | min | Elapsed time from the start of the run. Unique within a run. |
 | `supply_voltage_v` | numeric | V | Power supply voltage. The value at minute 0 is what the ≤ 20 V gate uses. |
 | `supply_current_a` | numeric | A | Power supply current |
 | `meter_voltage_v` | numeric | V | Multimeter voltage |
@@ -77,13 +78,14 @@ One row per time mark, in `data/readings/`. Everything recorded at the rig. Blan
 | `rinse_sample_id` | text | | ID of the rinse sample taken at this minute |
 | `notes` | text | | Anything unusual at this time mark |
 
-### `<CODE>_samples.csv`
+### `samples.csv`
 
-One row per sample, in `data/samples/`. Lab results, usually filled in days after the run.
+One row per sample. Lab results, usually filled in days after the run.
 
 | Column | Type | Unit | Meaning |
 |---|---|---|---|
-| `sample_id` | text, unique | | Must match the ID in the readings file exactly |
+| `experiment_code` | text → `setups.code` | | Which run the sample came from |
+| `sample_id` | text, unique across all runs | | Must match the ID in `readings.csv` exactly |
 | `tank` | text | | `conc`, `dil` or `rinse`. A cross-check against the readings file, which stays the authority. |
 | `li_mg_l` | numeric | mg/L | Li, by ICP |
 | `mg_mg_l` | numeric | mg/L | Mg, by ICP |
@@ -142,9 +144,9 @@ Sample IDs run two per sampling time: odd numbers are concentrate, even are dilu
 ### Steps
 
 1. **Add the `setups.csv` row** from the header block. Set `include` to `true`, and add a `notes` entry if anything about the run was unusual.
-2. **Create `data/readings/<CODE>_readings.csv`** with the standard header, then one row per time mark that has any value. Skip rows where only the time was written down.
+2. **Append the run's rows to `data/readings.csv`**, one per time mark that has any value, each starting with the experiment code. Skip rows where only the time was written down.
 3. **Merge the rinse block in** by minute, into the `rinse_*` columns of the rows that already exist.
-4. **Create `data/samples/<CODE>_samples.csv`**, one row per sample ID, with its tank and whatever the lab reported. Leave a cell blank when a measurement wasn't done.
+4. **Append the run's samples to `data/samples.csv`**, one row per sample ID, with the experiment code, the tank, and whatever the lab reported. Leave a cell blank when a measurement wasn't done.
 5. **Run the checks** and fix whatever they report.
 6. **Commit** the three files, so every later correction is recorded as a change.
 

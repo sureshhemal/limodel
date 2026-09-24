@@ -69,7 +69,7 @@ uv run jupyter lab       # open notebooks/ for exploration
 
 ### Everyday workflow
 
-1. Add or correct data in `data/`: a row in `setups.csv`, plus `readings/<CODE>_readings.csv` and `samples/<CODE>_samples.csv`.
+1. Add or correct data in `data/`: a row in `setups.csv`, the run's rows in `readings.csv`, and its lab results in `samples.csv`.
 2. Run the model from the terminal (commands to be added).
 3. Open `output/` for the charts and tables.
 
@@ -94,8 +94,8 @@ Li-Research/
 ├── .gitignore                  ← ignores .venv, output/, .env, .idea, Excel lock files
 ├── data/
 │   ├── setups.csv              ← one row per experiment
-│   ├── readings/               ← <CODE>_readings.csv go here
-│   └── samples/                ← <CODE>_samples.csv go here
+│   ├── readings.csv            ← rig readings for every run
+│   └── samples.csv             ← lab results for every sample
 ├── docs/
 │   └── data-format.md          ← column definitions and how to create the CSVs
 ├── output/                     ← generated reports (git-ignored)
@@ -132,8 +132,8 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
 | `setups.csv` | experiment | How the run was set up | before the run |
-| `readings/<CODE>_readings.csv` | time mark (minute) | Power log; tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
-| `samples/<CODE>_samples.csv` | sample | Tank, plus Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
+| `readings.csv` | time mark of a run | Power log; tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
+| `samples.csv` | sample | Tank, plus Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
 
 **[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these three files.**
 
