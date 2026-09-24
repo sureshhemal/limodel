@@ -15,15 +15,14 @@ from pathlib import Path
 
 import openpyxl
 
+from limodel.schema import UNLABELLED_VALUES
+
 # Column numbers in her sheets. The rinse block reuses the concentrate columns.
 POWER = {"supply_voltage_v": 3, "supply_current_a": 4, "meter_voltage_v": 5, "meter_current_ma": 6}
 CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
         "li": 18, "na": 19, "mg": 20, "k": 21, "ca": 22, "toc": 23}
 DIL = {"id": 24, "conductivity": 25, "ph": 26, "temp": 27, "weight": 28,
        "li": 29, "na": 30, "mg": 31, "k": 32, "ca": 33, "toc": 34}
-
-# Issue codes the script can set by itself. checks.py decides what each one means.
-UNLABELLED_VALUES = "UNLABELLED_VALUES"  # lab values in a row that carries no sample ID
 
 SETUP_FIELDS = ["code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
                 "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",

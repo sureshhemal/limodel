@@ -15,6 +15,8 @@ from pathlib import Path
 
 import openpyxl
 
+from limodel.schema import UNLABELLED_VALUES
+
 CONC = {"id": 13, "cond": 14, "ph": 15, "temp": 16, "wt": 17,
         "li": 18, "na": 19, "mg": 20, "k": 21, "ca": 22, "toc": 23}
 DIL = {"id": 24, "cond": 25, "ph": 26, "temp": 27, "wt": 28,
@@ -136,7 +138,7 @@ def check_readings(sheets, path, problems):
                 if value not in notes:
                     problems.append(f"{code} minute {minute}: sheet has {value} with no sample ID, "
                                     f"and it is not recorded in the CSV")
-            if orphans and issue_code != "UNLABELLED_VALUES":
+            if orphans and issue_code != UNLABELLED_VALUES:
                 problems.append(f"{code} minute {minute}: unlabelled lab values but "
                                 f"issue_code is {issue_code!r}")
     return checked

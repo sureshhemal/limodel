@@ -171,7 +171,7 @@ All three files carry an `issue_code` column, blank unless something is known to
 |---|---|---|
 | `UNLABELLED_VALUES` | Lab values recorded in a row that carries no sample ID, so they belong to no sample | the converter |
 
-Codes are a short controlled list, kept in `schema.py`; an unknown code is an error. Add a new one only when a real case needs it. Problems the code can work out for itself — mislabelled sample IDs, duplicates, out-of-range values, missing lab results — are **not** stored here, because `checks.py` re-derives them on every run and they would otherwise go stale.
+Codes are a short controlled list, defined in `src/limodel/schema.py` (`ISSUE_CODES`); an unknown code is an error. Add a new one only when a real case needs it. Problems the code can work out for itself — mislabelled sample IDs, duplicates, out-of-range values, missing lab results — are **not** stored here, because `checks.py` re-derives them on every run and they would otherwise go stale.
 
 ### Steps (by hand)
 
