@@ -1,5 +1,7 @@
 # limodel
 
+[![tests](https://github.com/sureshhemal/limodel/actions/workflows/tests.yml/badge.svg)](https://github.com/sureshhemal/limodel/actions/workflows/tests.yml)
+
 A model for finding the best electrodialysis setup for separating lithium from magnesium.
 
 **The question:** for a feed with a given Mg/Li ratio, which current density and which membrane give the best Li selectivity?
@@ -13,6 +15,8 @@ A model for finding the best electrodialysis setup for separating lithium from m
 - **Usefulness gate:** Li recovery at the end of the run ≥ 35% (provisional)
 
 The approach follows §2.5 of the GO-10 manuscript: a second-order polynomial surrogate model, with XGBoost fitted only as a comparison.
+
+**Where it is now:** the data is converted from her workbook and verified cell by cell, and `limodel check` reports everything wrong with it. The calculations (`calc`, `fit`, `best_setup`) are still to be written.
 
 ## Setup and running
 
@@ -52,26 +56,32 @@ This creates `.venv/`, installs the dependencies and dev tools, installs `limode
 ### 5. Run
 
 ```
-uv run limodel            # shows the help screen
-uv run limodel --help     # same
+uv run limodel --help     # the commands
+uv run limodel check      # list everything wrong with the data
 ```
 
 `uv run` always uses the project's `.venv`, so there's no need to activate it.
 
-> No commands are defined yet. Each one is added as an `@app.command()` function in `src/limodel/cli/main.py` once its module is written.
+`check` never fails, even on unreadable data — that is the point of it. The commands that compute results refuse invalid data instead; see [Everyday workflow](#everyday-workflow).
+
+> Only `check` exists so far. Each new command is an `@app.command()` function in `src/limodel/cli/main.py`.
 
 ### 6. Tests and notebooks
 
 ```
 uv run pytest            # run the tests in tests/
+uv run pytest -v         # one line per test
 uv run jupyter lab       # open notebooks/ for exploration
 ```
 
+The tests also run on every pull request, through `.github/workflows/tests.yml`.
+
 ### Everyday workflow
 
-1. Correct her workbook, then re-run the converter to rebuild the four files in `data/`.
-2. Run the model from the terminal (commands to be added).
-3. Open `output/` for the charts and tables.
+1. **`uv run limodel check`** — lists every problem in the data. It never fails, so it can be run at any time.
+2. Fix those in her workbook, then re-run the converter to rebuild the four files in `data/`.
+3. Repeat until `check` reports nothing.
+4. Run the model (commands still to be written) and open `output/` for the charts and tables.
 
 ### Adding packages
 
@@ -102,32 +112,43 @@ Li-Research/
 ├── output/                     ← generated reports (git-ignored)
 ├── notebooks/                  ← exploration
 ├── scripts/
-│   ├── convert_workbook.py     ← her Excel workbook → the three CSV files
+│   ├── convert_workbook.py     ← her Excel workbook → the four CSV files
 │   └── verify_against_workbook.py  ← checks every CSV value against the workbook
 ├── src/limodel/
-│   ├── __init__.py
-│   ├── schema.py               ← column definitions
-│   ├── checks.py               ← data problems → issues list
+│   ├── config.py               ← settings, read once from .env
+│   ├── data_loader.py          ← the front door: the only thing the app depends on
+│   ├── sources/
+│   │   └── csv_source.py       ← reads data/, validated against the schema
+│   ├── schema/                 ← one pandera model per file
+│   │   ├── run.py
+│   │   ├── stack_reading.py
+│   │   ├── tank_reading.py
+│   │   └── sample.py
+│   ├── checks.py               ← finds every data problem, without raising
 │   ├── calc.py                 ← raw → flux, t, P, recovery, start voltage
 │   ├── fit.py                  ← polynomial fits + CV
 │   ├── best_setup.py           ← gates + search for highest P
-│   ├── sources/
-│   │   ├── base.py             ← the data-source contract
-│   │   └── csv_source.py       ← reads data/
 │   └── cli/                    ← terminal-only, replaced in phase 2
 │       ├── main.py             ← the terminal app and its commands
 │       ├── charts.py           ← curve data → PNG
 │       └── report.py           ← writes output/
 └── tests/
-    ├── test_calc.py
-    └── test_checks.py
+    ├── conftest.py             ← fixtures
+    ├── fixtures/*.csv          ← small test data, independent of her workbook
+    ├── commands/test_check.py
+    ├── sources/                ← loader, source and checks tests
+    └── test_calc.py
 ```
 
 ## How the pieces fit
 
 ```
-data/*.csv → sources → checks → calc → fit → best_setup → cli (charts, report) → output/
+                      ┌─ lenient ─► checks ────────────────────────► `limodel check`
+data/*.csv ─► DataLoader
+                      └─ strict ──► calc ─► fit ─► best_setup ────► cli ─► output/
 ```
+
+Everything reads its data through `DataLoader`, which picks a source from `config.DATA_SOURCE`. Loading it **strictly** validates every table against its schema and refuses anything invalid, so the calculations can never run on bad data. Loading it **leniently** is how `check` reports problems instead of raising.
 
 ### `data/`: raw values only
 
@@ -150,10 +171,11 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 
 | Module | Job |
 |---|---|
-| `schema.py` | The single definition of every column: name, type, unit, required. Used for loading and for checks, and later mirrored by the database tables. |
-| `sources/base.py` | The contract every data source provides: `get_setups()`, `get_readings(code)`, `get_samples(code)`. |
-| `sources/csv_source.py` | Reads the CSV files in `data/`. Another source can replace it later without changing anything else. |
-| `checks.py` | Finds data problems: missing files, unmatched or duplicate sample IDs, blanks where values are required, out-of-range values, samples still waiting on lab results, mass-balance errors. |
+| `config.py` | Settings, read once from the environment and `.env`: where the data comes from, and where it lives. |
+| `data_loader.py` | The front door. Everything else asks it for tables and never learns where they came from. |
+| `sources/csv_source.py` | Reads the four CSV files, caches each one, and names the file when it is missing. |
+| `schema/` | One [pandera](https://pandera.readthedocs.io) model per file: types, required values, ranges, uniqueness, no unexpected columns. Every table is validated as it is handed out. |
+| `checks.py` | Finds every problem in one pass without raising, and explains each in plain words. Still to add: cross-table rules such as mass balance and samples still waiting on the lab. |
 | `calc.py` | Turns raw readings into physical quantities (volume = (weight − tare)/1000, moles, charge, current density), then one summary row per run: Li and Mg flux, t_Li, t_Mg, P, Li recovery, starting voltage. |
 | `fit.py` | Fits the second-order polynomials for P, Li recovery and starting voltage (inputs: current density and Mg/Li ratio; one model per membrane). Reports R², RMSE and cross-validation error. |
 | `best_setup.py` | For each membrane and Mg/Li ratio, scans current density within the tested range, drops settings that break the voltage or recovery gates, and returns the one with the highest P, together with the curve points. |
@@ -162,14 +184,27 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 
 The only part that prints, draws or writes files. It is replaced by Django + Vue in phase 2.
 
-`main.py` defines the `limodel` terminal app. Running `limodel` with no command shows its help. No commands are defined yet; they are added as the modules they depend on are written.
+`main.py` defines the `limodel` terminal app and its commands. So far there is one:
+
+| Command | Does |
+|---|---|
+| `limodel check` | Lists every problem in the data, and never fails |
+
+`summary`, `fit`, `best` and `report` follow as the modules they depend on are written.
 
 `charts.py` turns curve data into PNGs with matplotlib; `report.py` writes the `output/` folder.
 
 ### `tests/`
 
-- `test_calc.py`: the calculated P, t_Li and recovery for a known run must match the values in her spreadsheet.
-- `test_checks.py`: known data problems must be detected.
+Fixture CSV files under `tests/fixtures/` stand in for her data, so the tests do not depend on her workbook.
+
+| File | Covers |
+|---|---|
+| `sources/test_csv_source.py` | loading, types, caching, and every kind of rejection |
+| `sources/test_data_loader.py` | choosing the source from configuration |
+| `sources/test_find_problems.py` | each kind of problem, reported once, with the right run and column |
+| `commands/test_check.py` | the command prints the list and exits 0 even when the data is unreadable |
+| `test_calc.py` | still to write: the calculated P, t_Li and recovery for a known run must match her spreadsheet |
 
 ## Phases
 
