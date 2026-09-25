@@ -1,0 +1,5 @@
+run_code,minute,tank,conductivity_us_cm,ph,temp_c,weight_g,notes
+AA,0,conc,1267.4,5.845,21.4,2119.7,
+AA,0,dil,19130.1,5.889,21.4,2117.8,
+AA,0,rinse,21651.4,5.04,,4074.8,
+BB,0,conc,1300,5.9,21,2100,

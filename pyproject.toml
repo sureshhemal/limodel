@@ -11,6 +11,8 @@ dependencies = [
     "statsmodels",
     "matplotlib",
     "typer",
+    "pandera>=0.33.1",
+    "python-dotenv>=1.2.3",
 ]
 
 [project.scripts]

@@ -1,0 +1,4 @@
+sample_id,run_code,minute,tank,li_mg_l,mg_mg_l,na_mg_l,k_mg_l,ca_mg_l,toc_ppm,notes
+AA1,AA,0,conc,63.56,2.974,,,,0.9749,
+AA2,AA,0,dil,403.1,1657,,,,,
+BB1,BB,0,conc,60,3,,,,,

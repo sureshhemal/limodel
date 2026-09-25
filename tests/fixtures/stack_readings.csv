@@ -1,0 +1,4 @@
+run_code,minute,supply_voltage_v,supply_current_a,meter_voltage_v,meter_current_ma,notes
+AA,0,16,0.081,15.93,72.1,
+AA,5,15.44,0.082,15.4,72.4,
+BB,0,14,0.08,13.9,71,
