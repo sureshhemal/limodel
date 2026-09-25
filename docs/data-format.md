@@ -110,11 +110,15 @@ Unique on `run_code, minute, tank`.
 
 ### Converting with the script
 
-`scripts/convert_workbook.py` converts every `New_set_*` sheet in one go:
+`limodel convert` converts every `New_set_*` sheet in one go:
 
 ```
-uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+uv run limodel convert
 ```
+
+It reads the workbook named by `WORKBOOK` in `.env`, and asks before replacing files that
+are already there — a value corrected in a CSV but not in the workbook would be lost.
+`--force` skips the question.
 
 It rewrites all four files and prints anything that looks wrong: sample IDs that do not carry their run's code, lab values with no sample ID, and samples still waiting on the lab. `limodel check` reports the same kinds of problem from the CSV files themselves. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what she recorded.
 
@@ -123,10 +127,10 @@ Re-run it whenever she updates the workbook. Because the output is committed to 
 ### Checking the copy
 
 ```
-uv run python scripts/verify_against_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+uv run limodel verify
 ```
 
-It walks the workbook itself rather than trusting the converter, compares every value against the cell it came from, and reports anything in the sheets that did not reach the CSVs.
+It walks the workbook itself rather than trusting the converter, compares every value against the cell it came from, and reports anything in the sheets that did not reach the CSVs. It reads the same `WORKBOOK` setting.
 
 ### Where the values are in her spreadsheet
 

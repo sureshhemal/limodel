@@ -10,3 +10,7 @@ load_dotenv()
 # for csv data
 DATA_SOURCE = os.getenv("DATA_SOURCE", "csv").strip().lower()
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+
+# her workbook, which the scripts convert the CSV files from and check them against
+_workbook = os.getenv("WORKBOOK", "").strip()
+WORKBOOK = Path(_workbook).expanduser() if _workbook else None

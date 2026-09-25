@@ -1,28 +1,16 @@
-"""Convert her Excel workbook into the four CSV files under data/.
+"""Builds the four CSV files from her workbook, copying every value exactly as recorded.
 
-Usage:
-    uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
-
-Reads every `New_set_*` sheet and writes runs.csv, stack_readings.csv,
-tank_readings.csv and samples.csv, copying values exactly as recorded. Anything that
-looks wrong is reported, never corrected. The layout is described in
-docs/data-format.md.
+Anything that looks wrong is reported, never corrected: the files stay a faithful copy of
+what she wrote down. The layout is described in docs/data-format.md.
 """
 
 import csv
 import re
-import sys
-from pathlib import Path
+from dataclasses import dataclass
 
 import openpyxl
 
-# Column numbers in her sheets. The rinse block reuses the concentrate columns.
-POWER = {"supply_voltage_v": 3, "supply_current_a": 4, "meter_voltage_v": 5, "meter_current_ma": 6}
-CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
-        "li": 18, "na": 19, "mg": 20, "k": 21, "ca": 22, "toc": 23}
-DIL = {"id": 24, "conductivity": 25, "ph": 26, "temp": 27, "weight": 28,
-       "li": 29, "na": 30, "mg": 31, "k": 32, "ca": 33, "toc": 34}
-TANKS = {"conc": CONC, "dil": DIL, "rinse": CONC}  # the rinse block reuses CONC's columns
+from limodel.workbook.cells import MEASURED, POWER, TANKS, minute_rows, rinse_rows, run_sheets
 
 RUN_FIELDS = ["run_code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
               "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",
@@ -52,18 +40,6 @@ def blank(value):
     if isinstance(value, str):
         return value.strip()
     return value
-
-
-def code_of(sheet_name):
-    return sheet_name.strip().split("_")[-1]
-
-
-def find_rinse_row(ws):
-    """Row where the rinse block starts, found by the 'Rinse' label in column A."""
-    for r in range(9, ws.max_row + 1):
-        if str(ws.cell(r, 1).value).strip().lower() == "rinse":
-            return r
-    return None
 
 
 def parse_conc_start(text):
@@ -156,32 +132,18 @@ def read_sample(ws, row, code, minute, tank, cols):
 
 def convert_sheet(ws, code):
     """One sheet -> (run, stack readings, tank readings, samples, warnings)."""
-    rinse_row = find_rinse_row(ws)
-    end = rinse_row if rinse_row else ws.max_row + 1
+    rinse = rinse_rows(ws)
     stack, tanks, samples, rinse_samples, warnings = [], [], [], [], []
 
-    # rinse block, below the main table, keyed by the minute it shares with the main table
-    rinse_rows = {}
-    if rinse_row:
-        for r in range(rinse_row, rinse_row + 12):
-            minute = ws.cell(r, 2).value
-            if not isinstance(minute, (int, float)):
-                break
-            rinse_rows[int(minute)] = r
-
-    for r in range(9, end):
-        minute = ws.cell(r, 2).value
-        if not isinstance(minute, (int, float)):
-            continue
-        minute = int(minute)
-
+    for minute, r in minute_rows(ws).items():
         reading = read_stack(ws, r, code, minute)
         if reading:
             stack.append(reading)
 
         rows = {"conc": r, "dil": r}
-        if minute in rinse_rows:
-            rows["rinse"] = rinse_rows[minute]
+        if minute in rinse:
+            rows["rinse"] = rinse[minute]
+
         for tank, tank_row in rows.items():
             tank_reading = read_tank(ws, tank_row, code, minute, tank, TANKS[tank])
             if tank_reading:
@@ -197,7 +159,8 @@ def convert_sheet(ws, code):
 
     for sample in samples:
         if not sample["sample_id"].upper().startswith(code.upper()):
-            warnings.append(f"{code}: sample ID {sample['sample_id']!r} does not start with {code}")
+            warnings.append(f"{code}: sample ID {sample['sample_id']!r} does not start "
+                            f"with {code}")
         if sample["li_mg_l"] == "" and sample["mg_mg_l"] == "":
             warnings.append(f"{code}: sample {sample['sample_id']} has no lab results yet")
 
@@ -209,37 +172,40 @@ def write_csv(path, fields, rows):
         writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
-    print(f"{path.name}: {len(rows)} rows")
 
 
-def main(workbook_path, out_dir):
-    workbook = openpyxl.load_workbook(workbook_path, data_only=True)
+@dataclass(frozen=True)
+class Conversion:
+    """What was written, and everything in the sheets that looks wrong."""
+    runs: list[str]
+    files: dict[str, int]
+    warnings: list[str]
+
+
+def convert(workbook_path, data_dir):
+    """Rewrite the four CSV files from the workbook. Returns what was written.
+
+    Existing files are replaced, so a value corrected in a CSV but not in the workbook is
+    lost. Correct the workbook, not the CSV.
+    """
+    book = openpyxl.load_workbook(workbook_path, data_only=True)
     runs, stack, tanks, samples, warnings = [], [], [], [], []
-    for name in workbook.sheetnames:
-        if not name.startswith("New_set"):
-            continue
-        run, run_stack, run_tanks, run_samples, run_warnings = convert_sheet(
-            workbook[name], code_of(name))
+
+    for code, ws in run_sheets(book):
+        run, run_stack, run_tanks, run_samples, run_warnings = convert_sheet(ws, code)
         runs.append(run)
         stack.extend(run_stack)
         tanks.extend(run_tanks)
         samples.extend(run_samples)
         warnings.extend(run_warnings)
-        print(f"{run['run_code']:3s} {len(run_stack):3d} stack  {len(run_tanks):3d} tank  "
-              f"{len(run_samples):2d} samples")
 
-    write_csv(out_dir / "runs.csv", RUN_FIELDS, runs)
-    write_csv(out_dir / "stack_readings.csv", STACK_FIELDS, stack)
-    write_csv(out_dir / "tank_readings.csv", TANK_FIELDS, tanks)
-    write_csv(out_dir / "samples.csv", SAMPLE_FIELDS, samples)
+    tables = {"runs.csv": (RUN_FIELDS, runs),
+              "stack_readings.csv": (STACK_FIELDS, stack),
+              "tank_readings.csv": (TANK_FIELDS, tanks),
+              "samples.csv": (SAMPLE_FIELDS, samples)}
+    for name, (fields, rows) in tables.items():
+        write_csv(data_dir / name, fields, rows)
 
-    if warnings:
-        print(f"\n{len(warnings)} warnings:")
-        for warning in warnings:
-            print(" ", warning)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    main(Path(sys.argv[1]).expanduser(), Path(__file__).resolve().parent.parent / "data")
+    return Conversion(runs=[run["run_code"] for run in runs],
+                      files={name: len(rows) for name, (_, rows) in tables.items()},
+                      warnings=warnings)
