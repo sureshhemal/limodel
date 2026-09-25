@@ -119,10 +119,15 @@ Li-Research/
 │   ├── data_loader.py          ← the front door: the only thing the app depends on
 │   ├── sources/
 │   │   └── csv_source.py       ← reads data/, validated against the schema
-│   ├── schema/                 ← one pandera model per file
+│   ├── schema/                 ← one pandera model per file: what a CSV must look like
 │   │   ├── run.py
 │   │   ├── stack_reading.py
 │   │   ├── tank_reading.py
+│   │   └── sample.py
+│   ├── models/                 ← one pydantic model per thing: what the app works with
+│   │   ├── run.py              ← a run, with its readings inside it
+│   │   ├── stack_reading.py
+│   │   ├── tank_reading.py     ← carries the sample drawn from it, if there was one
 │   │   └── sample.py
 │   ├── checks.py               ← finds every data problem, without raising
 │   ├── calc.py                 ← raw → flux, t, P, recovery, start voltage
@@ -143,12 +148,31 @@ Li-Research/
 ## How the pieces fit
 
 ```
-                      ┌─ lenient ─► checks ────────────────────────► `limodel check`
+                 ┌─ raw_tables() ─► checks ───────────────────────► `limodel check`
 data/*.csv ─► DataLoader
-                      └─ strict ──► calc ─► fit ─► best_setup ────► cli ─► output/
+                 └─ load() ─► list[Run] ─► calc ─► fit ─► best_setup ─► cli ─► output/
 ```
 
-Everything reads its data through `DataLoader`, which picks a source from `config.DATA_SOURCE`. Loading it **strictly** validates every table against its schema and refuses anything invalid, so the calculations can never run on bad data. Loading it **leniently** is how `check` reports problems instead of raising.
+Everything reads its data through `DataLoader`, which picks a source from `config.DATA_SOURCE`.
+
+- **`load()`** validates every table against its schema and returns the runs as objects, so the calculations can never run on bad data.
+- **`raw_tables()`** hands the tables over unchecked, which is how `check` reports problems instead of refusing to open the files.
+
+The objects are the shape the science reads:
+
+```python
+run = DataLoader().load()[0]
+
+run.id                              # "AE"
+run.cem, run.cell_pairs             # "GO-10", 10
+run.stack_readings[0].supply_voltage_v
+run.tank_readings[0].weight_g       # the tank at that minute
+run.tank_readings[0].sample.li_mg_l # the sample drawn from it, or None
+```
+
+A sample belongs to the tank reading it was drawn from, so weight and concentration — the two halves of "how many moles" — sit on the same object. Every object also has a derived `id` (`AE`, `AE:60`, `AE:conc:60`, `AE1`) and its foreign keys (`run_id`, `tank_id`), computed from the natural keys rather than stored.
+
+`calc` turns those objects into **one summary row per run**, and from there it is pandas again: a 21-row table is what `fit` hands to scikit-learn.
 
 ### `data/`: raw values only, and not in git
 
@@ -177,6 +201,7 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 | `data_loader.py` | The front door. Everything else asks it for tables and never learns where they came from. |
 | `sources/csv_source.py` | Reads the four CSV files, caches each one, and names the file when it is missing. |
 | `schema/` | One [pandera](https://pandera.readthedocs.io) model per file: types, required values, ranges, uniqueness, no unexpected columns. Every table is validated as it is handed out. |
+| `models/` | One [pydantic](https://docs.pydantic.dev) model per thing — `Run`, `StackReading`, `TankReading`, `Sample` — with the nesting, the computed ids and the foreign keys. This is what `load()` returns. |
 | `checks.py` | Finds every problem in one pass without raising, and explains each in plain words. Still to add: cross-table rules such as mass balance and samples still waiting on the lab. |
 | `calc.py` | Turns raw readings into physical quantities (volume = (weight − tare)/1000, moles, charge, current density), then one summary row per run: Li and Mg flux, t_Li, t_Mg, P, Li recovery, starting voltage. |
 | `fit.py` | Fits the second-order polynomials for P, Li recovery and starting voltage (inputs: current density and Mg/Li ratio; one model per membrane). Reports R², RMSE and cross-validation error. |
@@ -203,7 +228,7 @@ Fixture CSV files under `tests/fixtures/` stand in for her data, so the tests do
 | File | Covers |
 |---|---|
 | `sources/test_csv_source.py` | loading, types, caching, and every kind of rejection |
-| `sources/test_data_loader.py` | choosing the source from configuration |
+| `sources/test_data_loader.py` | choosing the source, and the shape of what `load()` returns |
 | `sources/test_find_problems.py` | each kind of problem, reported once, with the right run and column |
 | `commands/test_check.py` | the command prints the list and exits 0 even when the data is unreadable |
 | `test_calc.py` | still to write: the calculated P, t_Li and recovery for a known run must match her spreadsheet |
