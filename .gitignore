@@ -12,7 +12,7 @@ output/
 *.docx
 *.xlsx
 
-# Her data: kept locally, regenerated from the workbook by `limodel convert`
+# Experiment data: kept locally, regenerated from the workbook by `limodel convert`
 /data/*
 !/data/.gitkeep
 /data_*/

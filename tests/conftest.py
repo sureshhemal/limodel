@@ -35,7 +35,7 @@ def write_file(data_dir):
     return write
 
 
-# Where a value sits in one of her sheets: the setup cells, then the columns of a time row.
+# Where a value sits in a run sheet: the setup cells, then the columns of a time row.
 SETUP = {"B1": datetime(2026, 7, 9), "E1": 400, "E2": 2000, "B3": 2.44, "Q1": "GO-10",
          "Q2": "AR 204", "I1": 0.2, "I2": 6, "M1": 10, "Y2": 96.2, "Y3": 111.5, "Y4": 42,
          "I3": "DI Water +0.5 g/l LiCl", "B5": "2%Wt"}

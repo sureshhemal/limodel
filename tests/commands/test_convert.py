@@ -1,4 +1,4 @@
-"""The convert command: rebuilds the data files from her workbook, changing nothing."""
+"""The convert command: rebuilds the data files from the workbook, changing nothing."""
 
 import csv
 

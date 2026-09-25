@@ -18,7 +18,7 @@ is in the feed.
 
 ## The symbols
 
-| Symbol | Meaning | Unit | Levels she ran |
+| Symbol | Meaning | Unit | Levels run so far |
 |---|---|---|---|
 | `P` | Permselectivity, Li over Mg | — | the outcome |
 | `J` | Current density | mA/cm² | 3, 6, 12, 24 |

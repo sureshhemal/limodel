@@ -1,4 +1,4 @@
-"""Compares the CSV files with her workbook: every value must match the cell it came from."""
+"""Compares the CSV files with the workbook: every value must match the cell it came from."""
 
 import csv
 import re

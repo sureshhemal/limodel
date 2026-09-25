@@ -1,7 +1,7 @@
-"""Builds the four CSV files from her workbook, copying every value exactly as recorded.
+"""Builds the four CSV files from the workbook, copying every value exactly as recorded.
 
 Anything that looks wrong is reported, never corrected: the files stay a faithful copy of
-what she wrote down. The layout is described in docs/data-format.md.
+what was written down. The layout is described in docs/data-format.md.
 """
 
 import csv
@@ -43,7 +43,7 @@ def blank(value):
 
 
 def parse_conc_start(text):
-    """'DI Water +0.5 g/l LiCl' -> ('LiCl', 0.5), keeping the salt spelled as she wrote it."""
+    """'DI Water +0.5 g/l LiCl' -> ('LiCl', 0.5), keeping the salt spelled as recorded."""
     if not text:
         return "", ""
     match = re.search(r"([\d.]+)\s*g/?l\s*([A-Za-z0-9]+)", str(text), re.I)

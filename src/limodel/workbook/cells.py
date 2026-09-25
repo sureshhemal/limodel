@@ -1,4 +1,4 @@
-"""Where things sit in her sheets, and the small helpers that read them.
+"""Where things sit in a run sheet, and the small helpers that read them.
 
 Both halves of this package — building the CSV files and comparing them back — have to
 agree on the layout, so it is described once, here.
@@ -19,7 +19,7 @@ MEASURED = ("li", "na", "mg", "k", "ca", "toc")   # what the lab reports for a s
 
 
 def run_sheets(book):
-    """Her Mg/Li sheets, in the order she made them: (run code, sheet)."""
+    """The Mg/Li run sheets, in workbook order: (run code, sheet)."""
     return [(code_of(name), book[name])
             for name in book.sheetnames if name.startswith(SHEET_PREFIX)]
 
