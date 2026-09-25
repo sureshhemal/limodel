@@ -152,7 +152,7 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 |---|---|
 | `schema.py` | The single definition of every column: name, type, unit, required. Used for loading and for checks, and later mirrored by the database tables. |
 | `sources/base.py` | The contract every data source provides: `get_setups()`, `get_readings(code)`, `get_samples(code)`. |
-| `sources/csv_source.py` | Implements the contract by reading `data/`. A PostgreSQL source replaces it in phase 2 without changing anything else. |
+| `sources/csv_source.py` | Reads the CSV files in `data/`. Another source can replace it later without changing anything else. |
 | `checks.py` | Finds data problems: missing files, unmatched or duplicate sample IDs, blanks where values are required, out-of-range values, samples still waiting on lab results, mass-balance errors. |
 | `calc.py` | Turns raw readings into physical quantities (volume = (weight − tare)/1000, moles, charge, current density), then one summary row per run: Li and Mg flux, t_Li, t_Mg, P, Li recovery, starting voltage. |
 | `fit.py` | Fits the second-order polynomials for P, Li recovery and starting voltage (inputs: current density and Mg/Li ratio; one model per membrane). Reports R², RMSE and cross-validation error. |
@@ -174,4 +174,4 @@ The only part that prints, draws or writes files. It is replaced by Django + Vue
 ## Phases
 
 1. **Phase 1 (now):** pure Python, run from the terminal, reading CSV files on her computer.
-2. **Phase 2:** Django (API) + Vue frontend, with data in hosted PostgreSQL (e.g. Neon). `src/limodel/` carries over unchanged; `cli/` is replaced and `csv_source.py` gets a database counterpart.
+2. **Phase 2:** Django (API) + Vue frontend. `src/limodel/` carries over unchanged; `cli/` is replaced and the data source can change behind `DataLoader`.

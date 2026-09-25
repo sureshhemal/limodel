@@ -16,8 +16,6 @@ from pathlib import Path
 
 import openpyxl
 
-from limodel.schema import UNLABELLED_VALUES
-
 # Column numbers in her sheets. The rinse block reuses the concentrate columns.
 POWER = {"supply_voltage_v": 3, "supply_current_a": 4, "meter_voltage_v": 5, "meter_current_ma": 6}
 CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
@@ -29,16 +27,15 @@ TANKS = {"conc": CONC, "dil": DIL, "rinse": CONC}  # the rinse block reuses CONC
 RUN_FIELDS = ["run_code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
               "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",
               "rinse_salt", "rinse_wt_pct", "set_current_ma", "flow_l_min", "area_cm2",
-              "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include",
-              "issue_code", "notes"]
+              "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include", "notes"]
 
-STACK_FIELDS = ["run_code", "minute"] + list(POWER) + ["issue_code", "notes"]
+STACK_FIELDS = ["run_code", "minute"] + list(POWER) + ["notes"]
 
 TANK_FIELDS = ["run_code", "minute", "tank", "conductivity_us_cm", "ph", "temp_c",
-               "weight_g", "issue_code", "notes"]
+               "weight_g", "notes"]
 
 SAMPLE_FIELDS = ["sample_id", "run_code", "minute", "tank", "li_mg_l", "mg_mg_l",
-                 "na_mg_l", "k_mg_l", "ca_mg_l", "toc_ppm", "issue_code", "notes"]
+                 "na_mg_l", "k_mg_l", "ca_mg_l", "toc_ppm", "notes"]
 
 MEASURED = ("li", "na", "mg", "k", "ca", "toc")
 
@@ -106,13 +103,12 @@ def read_run(ws, code):
         "tare_dil_g": blank(ws.cell(3, 25).value),
         "tare_rinse_g": blank(ws.cell(4, 25).value),
         "include": "true",
-        "issue_code": "",
         "notes": "",
     }
 
 
 def read_stack(ws, row, code, minute):
-    reading = {"run_code": code, "minute": minute, "issue_code": "", "notes": ""}
+    reading = {"run_code": code, "minute": minute, "notes": ""}
     for field, column in POWER.items():
         reading[field] = blank(ws.cell(row, column).value)
     return reading if any(reading[f] != "" for f in POWER) else None
@@ -127,17 +123,15 @@ def read_tank(ws, row, code, minute, tank, cols):
         "ph": blank(ws.cell(row, cols["ph"]).value),
         "temp_c": blank(ws.cell(row, cols["temp"]).value),
         "weight_g": blank(ws.cell(row, cols["weight"]).value),
-        "issue_code": "",
         "notes": "",
     }
     measured = [f"{m}={blank(ws.cell(row, cols[m]).value)}"
                 for m in MEASURED if blank(ws.cell(row, cols[m]).value) != ""]
     if not blank(ws.cell(row, cols["id"]).value) and measured:
         # lab values with nothing to attach them to; kept here so nothing is lost
-        reading["issue_code"] = UNLABELLED_VALUES
-        reading["notes"] = ", ".join(measured)
+        reading["notes"] = "no sample ID for: " + ", ".join(measured)
     has_value = any(reading[f] != "" for f in
-                    ("conductivity_us_cm", "ph", "temp_c", "weight_g", "issue_code"))
+                    ("conductivity_us_cm", "ph", "temp_c", "weight_g", "notes"))
     return reading if has_value else None
 
 
@@ -156,7 +150,6 @@ def read_sample(ws, row, code, minute, tank, cols):
         "k_mg_l": blank(ws.cell(row, cols["k"]).value),
         "ca_mg_l": blank(ws.cell(row, cols["ca"]).value),
         "toc_ppm": blank(ws.cell(row, cols["toc"]).value),
-        "issue_code": "",
         "notes": "",
     }
 
@@ -193,9 +186,9 @@ def convert_sheet(ws, code):
             tank_reading = read_tank(ws, tank_row, code, minute, tank, TANKS[tank])
             if tank_reading:
                 tanks.append(tank_reading)
-                if tank_reading["issue_code"] == UNLABELLED_VALUES:
+                if tank_reading["notes"]:
                     warnings.append(f"{code}: minute {minute} {tank} has "
-                                    f"{tank_reading['notes']} but no sample ID")
+                                    f"{tank_reading['notes']}")
             sample = read_sample(ws, tank_row, code, minute, tank, TANKS[tank])
             if sample:
                 (rinse_samples if tank == "rinse" else samples).append(sample)

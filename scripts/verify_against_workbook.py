@@ -14,8 +14,6 @@ from pathlib import Path
 
 import openpyxl
 
-from limodel.schema import UNLABELLED_VALUES
-
 CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
         "li": 18, "na": 19, "mg": 20, "k": 21, "ca": 22, "toc": 23}
 DIL = {"id": 24, "conductivity": 25, "ph": 26, "temp": 27, "weight": 28,
@@ -179,15 +177,12 @@ def check_tanks(sheets, path, problems):
             if not same(row[field], ws.cell(r, cols[key]).value):
                 problems.append(f"{code} min {minute} {tank} {field}: "
                                 f"csv={row[field]!r} excel={norm(ws.cell(r, cols[key]).value)!r}")
-        # lab values with no sample ID are kept here, in issue_code and notes
+        # lab values with no sample ID are kept here, in notes
         for value in orphan_values(ws, r, cols):
             checked += 1
             if value not in row["notes"]:
                 problems.append(f"{code} minute {minute} {tank}: sheet has {value} with no "
                                 f"sample ID, and it is not recorded in the CSV")
-            if row["issue_code"] != UNLABELLED_VALUES:
-                problems.append(f"{code} minute {minute} {tank}: unlabelled lab values but "
-                                f"issue_code is {row['issue_code']!r}")
 
     for code, (ws, _, tank_rows) in sheets.items():
         for (minute, tank), r in tank_rows.items():

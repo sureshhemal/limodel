@@ -7,8 +7,6 @@ See the [README](../README.md) for the project as a whole.
 
 The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, edit the source and run the converter again; everything downstream updates.
 
-Each file is one future PostgreSQL table.
-
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
 | `runs.csv` | experiment | Membranes, feed, starting concentrate, rinse, flow, area, cell pairs, tare weights | before the run |
@@ -61,7 +59,6 @@ Rules for every file:
 | `tare_dil_g` | numeric | g | ✓ | Diluate bucket + stirrer |
 | `tare_rinse_g` | numeric | g | ✓ | Rinse bucket + stirrer |
 | `include` | boolean | | ✓ | Whether the run is used |
-| `issue_code` | text | | | See below |
 | `notes` | text | | | |
 
 Not stored, because the code calculates them: Mg/Li mass and molar ratio, flow in cm³/s, velocity, current density, total charge, run length.
@@ -76,7 +73,7 @@ Not stored, because the code calculates them: Mg/Li mass and molar ratio, flow i
 | `supply_current_a` | numeric | A | Power supply |
 | `meter_voltage_v` | numeric | V | Multimeter |
 | `meter_current_ma` | numeric | mA | Multimeter; this is the current used in the calculations |
-| `issue_code`, `notes` | text | | |
+| `notes` | text | | |
 
 ### `tank_readings.csv`
 
@@ -89,7 +86,7 @@ Not stored, because the code calculates them: Mg/Li mass and molar ratio, flow i
 | `ph` | numeric | | |
 | `temp_c` | numeric | °C | |
 | `weight_g` | numeric | g | Including bucket and stirrer. Volume = (weight − tare) / 1000. |
-| `issue_code`, `notes` | text | | |
+| `notes` | text | | |
 
 Unique on `run_code, minute, tank`.
 
@@ -105,19 +102,9 @@ Unique on `run_code, minute, tank`.
 | `mg_mg_l` | numeric | mg/L | Mg, by ICP |
 | `na_mg_l`, `k_mg_l`, `ca_mg_l` | numeric | mg/L | Blank when not measured; kept for future Na or seawater runs |
 | `toc_ppm` | numeric | ppm | Total organic carbon |
-| `issue_code`, `notes` | text | | |
+| `notes` | text | | |
 
 `run_code, minute, tank` points at a row in `tank_readings.csv`.
-
-## `issue_code`
-
-All four files carry an `issue_code` column, blank unless something is known to be wrong with that row. It records **what is wrong**, never what to do about it; `checks.py` decides that, so the policy can change without editing data. `notes` beside it holds the human explanation.
-
-| Code | Meaning | Set by |
-|---|---|---|
-| `UNLABELLED_VALUES` | Lab values recorded in a sheet row that carries no sample ID, so they belong to no sample. Kept on the tank row, with the values in `notes`. | the converter |
-
-Codes are a short controlled list, defined in `src/limodel/schema.py` (`ISSUE_CODES`); an unknown code is an error. Add a new one only when a real case needs it. Problems the code can work out for itself — mislabelled sample IDs, duplicates, out-of-range values, missing lab results — are **not** stored here, because `checks.py` re-derives them on every run and they would otherwise go stale.
 
 ## Creating the CSV files from a run
 
@@ -129,7 +116,7 @@ Codes are a short controlled list, defined in `src/limodel/schema.py` (`ISSUE_CO
 uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
 ```
 
-It rewrites all four files and prints anything that looks wrong: sample IDs that do not carry their run's code, lab values with no sample ID, and samples still waiting on the lab. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what she recorded.
+It rewrites all four files and prints anything that looks wrong: sample IDs that do not carry their run's code, lab values with no sample ID, and samples still waiting on the lab. `limodel check` reports the same kinds of problem from the CSV files themselves. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what she recorded.
 
 Re-run it whenever she updates the workbook. Because the output is committed to git, the diff then shows exactly which values changed.
 
