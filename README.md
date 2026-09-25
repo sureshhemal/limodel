@@ -16,7 +16,7 @@ A model for finding the best electrodialysis setup for separating lithium from m
 
 The approach follows §2.5 of the GO-10 manuscript: a second-order polynomial surrogate model, with XGBoost fitted only as a comparison.
 
-**Where it is now:** the data is converted from her workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. The calculations (`calc`, `fit`, `best_setup`) are still to be written.
+**Where it is now:** the data is converted from the workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. The calculations (`calc`, `fit`, `best_setup`) are still to be written.
 
 ## Setup and running
 
@@ -57,9 +57,9 @@ This creates `.venv/`, installs the dependencies and dev tools, installs `limode
 
 ```
 uv run limodel --help     # the commands
-uv run limodel convert    # rebuild the data files from her workbook
+uv run limodel convert    # rebuild the data files from the workbook
 uv run limodel check      # list everything wrong with the data
-uv run limodel verify     # compare every value with her workbook
+uv run limodel verify     # compare every value with the workbook
 ```
 
 `uv run` always uses the project's `.venv`, so there's no need to activate it.
@@ -80,9 +80,9 @@ The tests also run on every pull request, through `.github/workflows/tests.yml`.
 
 ### Everyday workflow
 
-1. **`uv run limodel convert`** — rebuilds the four files in `data/` from her workbook. It asks first, because it replaces them.
+1. **`uv run limodel convert`** — rebuilds the four files in `data/` from the workbook. It asks first, because it replaces them.
 2. **`uv run limodel check`** — lists every problem in the data. It never fails, so it can be run at any time.
-3. Fix those in her workbook and convert again.
+3. Fix those in the workbook and convert again.
 4. **`uv run limodel verify`** — confirms the files still hold exactly what the workbook holds.
 5. Repeat until `check` reports nothing.
 6. Run the model (commands still to be written) and open `output/` for the charts and tables.
@@ -131,20 +131,25 @@ Li-Research/
 │   │   ├── tank_reading.py     ← carries the sample drawn from it, if there was one
 │   │   └── sample.py
 │   ├── checks.py               ← finds every data problem, without raising
-│   ├── workbook/               ← her Excel workbook, in and out
-│   │   ├── cells.py            ← where everything sits in her sheets
+│   ├── workbook/               ← the experiment workbook, in and out
+│   │   ├── cells.py            ← where everything sits in a run sheet
 │   │   ├── convert.py          ← the workbook → the four CSV files
 │   │   └── compare.py          ← the four CSV files → every difference from the workbook
 │   ├── calc.py                 ← raw → flux, t, P, recovery, start voltage
 │   ├── fit.py                  ← polynomial fits + CV
 │   ├── best_setup.py           ← gates + search for highest P
 │   └── cli/                    ← terminal-only, replaced in phase 2
-│       ├── main.py             ← the terminal app and its commands
+│       ├── main.py             ← the terminal app: which commands it has, and their options
+│       ├── settings.py         ← a setting turned into a value, or a plain message and exit
+│       ├── commands/           ← one class per command, holding what it does
+│       │   ├── convert.py
+│       │   ├── check.py
+│       │   └── verify.py
 │       ├── charts.py           ← curve data → PNG
 │       └── report.py           ← writes output/
 └── tests/
     ├── conftest.py             ← fixtures
-    ├── fixtures/*.csv          ← small test data, independent of her workbook
+    ├── fixtures/*.csv          ← small test data, independent of any workbook
     ├── commands/                ← one file per command
     ├── sources/                ← loader, source and checks tests
     └── test_calc.py
@@ -181,7 +186,7 @@ A sample belongs to the tank reading it was drawn from, so weight and concentrat
 
 ### `data/`: raw values only, and not in git
 
-The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, fix her workbook and re-run the converter; everything downstream updates.
+The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, fix the workbook and re-run the converter; everything downstream updates.
 
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
@@ -190,9 +195,9 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 | `tank_readings.csv` | tank at a time mark | Conductivity, pH, temperature, weight | during the run |
 | `samples.csv` | sample | Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
 
-The files themselves are **git-ignored**: they are her experimental data, regenerated from her workbook with `limodel convert`, so a clone starts with an empty `data/` folder.
+The files themselves are **git-ignored**: it is experimental data, regenerated from the workbook with `limodel convert`, so a clone starts with an empty `data/` folder.
 
-**[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these four files.**
+**[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one spreadsheet sheet into these four files.**
 
 ## The code
 
@@ -202,13 +207,13 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 
 | Module | Job |
 |---|---|
-| `config.py` | Settings, read once from the environment and `.env`: where the data comes from, where it lives, and where her workbook is. |
+| `config.py` | Settings, read once from the environment and `.env`: where the data comes from, where it lives, and where the workbook is. |
 | `data_loader.py` | The front door. Everything else asks it for tables and never learns where they came from. |
 | `sources/csv_source.py` | Reads the four CSV files, caches each one, and names the file when it is missing. |
 | `schema/` | One [pandera](https://pandera.readthedocs.io) model per file: types, required values, ranges, uniqueness, no unexpected columns. Every table is validated as it is handed out. |
 | `models/` | One [pydantic](https://docs.pydantic.dev) model per thing — `Run`, `StackReading`, `TankReading`, `Sample` — with the nesting, the computed ids and the foreign keys. This is what `load()` returns. |
 | `checks.py` | Finds every problem in one pass without raising, and explains each in plain words. Still to add: cross-table rules such as mass balance and samples still waiting on the lab. |
-| `workbook/` | Her Excel workbook: `convert.py` builds the four CSV files from it, copying every value as recorded and reporting rather than correcting; `compare.py` walks the sheets and reports every value the CSV files do not match, including a reading that never arrived. `cells.py` holds the sheet layout both of them read. |
+| `workbook/` | The experiment workbook: `convert.py` builds the four CSV files from it, copying every value as recorded and reporting rather than correcting; `compare.py` walks the sheets and reports every value the CSV files do not match, including a reading that never arrived. `cells.py` holds the sheet layout both of them read. |
 | `calc.py` | Turns raw readings into physical quantities (volume = (weight − tare)/1000, moles, charge, current density), then one summary row per run: Li and Mg flux, t_Li, t_Mg, P, Li recovery, starting voltage. |
 | `fit.py` | Fits the second-order polynomials for P, Li recovery and starting voltage (inputs: current density and Mg/Li ratio; one model per membrane). Reports R², RMSE and cross-validation error. |
 | `best_setup.py` | For each membrane and Mg/Li ratio, scans current density within the tested range, drops settings that break the voltage or recovery gates, and returns the one with the highest P, together with the curve points. |
@@ -217,13 +222,13 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 
 The only part that prints, draws or writes files. It is replaced by Django + Vue in phase 2.
 
-`main.py` defines the `limodel` terminal app and its commands. So far there are three:
+`main.py` defines the `limodel` terminal app: each command is an `@app.command()` function that asks `settings.py` for what it needs and hands the work to a class in `commands/`, one file per command. A setting that is missing or wrong is explained and exits, rather than raising. So far there are three:
 
 | Command | Does |
 |---|---|
-| `limodel convert` | Rebuilds the four data files from her workbook. Asks before replacing them, unless `--force` |
+| `limodel convert` | Rebuilds the four data files from the workbook. Asks before replacing them, unless `--force` |
 | `limodel check` | Lists every problem in the data, and never fails |
-| `limodel verify` | Compares every value with the cell it came from in her workbook, named by `WORKBOOK` in `.env` |
+| `limodel verify` | Compares every value with the cell it came from in the workbook, named by `WORKBOOK` in `.env` |
 
 `summary`, `fit`, `best` and `report` follow as the modules they depend on are written.
 
@@ -231,7 +236,7 @@ The only part that prints, draws or writes files. It is replaced by Django + Vue
 
 ### `tests/`
 
-Fixture CSV files under `tests/fixtures/` stand in for her data, so the tests do not depend on her workbook.
+Fixture CSV files under `tests/fixtures/` stand in for real data, so the tests do not depend on any workbook.
 
 | File | Covers |
 |---|---|
@@ -241,9 +246,9 @@ Fixture CSV files under `tests/fixtures/` stand in for her data, so the tests do
 | `commands/test_check.py` | the command prints the list and exits 0 even when the data is unreadable |
 | `commands/test_convert.py` | the four files written from a workbook, a value copied as recorded, a warning instead of a correction, and the question before replacing files |
 | `commands/test_verify.py` | a workbook built in the test, matching and mismatching, and a missing `WORKBOOK` |
-| `test_calc.py` | still to write: the calculated P, t_Li and recovery for a known run must match her spreadsheet |
+| `test_calc.py` | still to write: the calculated P, t_Li and recovery for a known run must match the spreadsheet |
 
 ## Phases
 
-1. **Phase 1 (now):** pure Python, run from the terminal, reading CSV files on her computer.
+1. **Phase 1 (now):** pure Python, run from the terminal, reading CSV files on one computer.
 2. **Phase 2:** Django (API) + Vue frontend. `src/limodel/` carries over unchanged; `cli/` is replaced and the data source can change behind `DataLoader`.
