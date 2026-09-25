@@ -150,7 +150,7 @@ data/*.csv ─► DataLoader
 
 Everything reads its data through `DataLoader`, which picks a source from `config.DATA_SOURCE`. Loading it **strictly** validates every table against its schema and refuses anything invalid, so the calculations can never run on bad data. Loading it **leniently** is how `check` reports problems instead of raising.
 
-### `data/`: raw values only
+### `data/`: raw values only, and not in git
 
 The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, fix her workbook and re-run the converter; everything downstream updates.
 
@@ -160,6 +160,8 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 | `stack_readings.csv` | time mark of a run | The power log | during the run |
 | `tank_readings.csv` | tank at a time mark | Conductivity, pH, temperature, weight | during the run |
 | `samples.csv` | sample | Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
+
+The files themselves are **git-ignored**: they are her experimental data, regenerated from her workbook with `scripts/convert_workbook.py`, so a clone starts with an empty `data/` folder.
 
 **[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these four files.**
 

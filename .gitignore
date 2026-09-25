@@ -11,3 +11,7 @@ output/
 *.pdf
 *.docx
 *.xlsx
+
+# Her data: kept locally, regenerated from the workbook by scripts/convert_workbook.py
+/data/*
+!/data/.gitkeep
