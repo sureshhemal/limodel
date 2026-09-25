@@ -1,4 +1,4 @@
-code,series,run_date,cem,aem,li_feed_mg_l,mg_feed_mg_l,licl_g_l,mgcl2_6h2o_g_l,conc_start_salt,conc_start_g_l,rinse_salt,rinse_wt_pct,set_current_ma,flow_l_min,area_cm2,cell_pairs,tare_conc_g,tare_dil_g,tare_rinse_g,include,issue_code,notes
+run_code,series,run_date,cem,aem,li_feed_mg_l,mg_feed_mg_l,licl_g_l,mgcl2_6h2o_g_l,conc_start_salt,conc_start_g_l,rinse_salt,rinse_wt_pct,set_current_ma,flow_l_min,area_cm2,cell_pairs,tare_conc_g,tare_dil_g,tare_rinse_g,include,issue_code,notes
 AE,new_set_mg,2026-07-09,GO-10,AR 204,400,2000,2.44,,LiCl,0.5,Na2SO4,2,,0.2,6,10,96.2,111.5,42,true,,
 AF,new_set_mg,2026-07-11,GO-10,AR 204,400,4000,2.44,,LiCl,0.5,Na2SO4,2,,0.2,6,10,132.7,126.1,43.1,true,,
 AG,new_set_mg,2026-07-12,GO-10,AR 204,400,8000,2.44,,LiCl,0.5,Na2SO4,2,,0.2,6,10,120.6,128.8,29.2,true,,

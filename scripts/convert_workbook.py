@@ -1,11 +1,12 @@
-"""Convert her Excel workbook into data/setups.csv, data/readings.csv and data/samples.csv.
+"""Convert her Excel workbook into the four CSV files under data/.
 
 Usage:
     uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
 
-Reads every `New_set_*` sheet, writes the three CSV files, and prints anything that
-looks wrong (sample IDs that do not carry the run's code, missing lab results).
-The layout it expects is described in docs/data-format.md.
+Reads every `New_set_*` sheet and writes runs.csv, stack_readings.csv,
+tank_readings.csv and samples.csv, copying values exactly as recorded. Anything that
+looks wrong is reported, never corrected. The layout is described in
+docs/data-format.md.
 """
 
 import csv
@@ -23,27 +24,28 @@ CONC = {"id": 13, "conductivity": 14, "ph": 15, "temp": 16, "weight": 17,
         "li": 18, "na": 19, "mg": 20, "k": 21, "ca": 22, "toc": 23}
 DIL = {"id": 24, "conductivity": 25, "ph": 26, "temp": 27, "weight": 28,
        "li": 29, "na": 30, "mg": 31, "k": 32, "ca": 33, "toc": 34}
+TANKS = {"conc": CONC, "dil": DIL, "rinse": CONC}  # the rinse block reuses CONC's columns
 
-SETUP_FIELDS = ["code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
-                "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",
-                "rinse_salt", "rinse_wt_pct", "set_current_ma", "flow_l_min", "area_cm2",
-                "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include", "issue_code", "notes"]
+RUN_FIELDS = ["run_code", "series", "run_date", "cem", "aem", "li_feed_mg_l", "mg_feed_mg_l",
+              "licl_g_l", "mgcl2_6h2o_g_l", "conc_start_salt", "conc_start_g_l",
+              "rinse_salt", "rinse_wt_pct", "set_current_ma", "flow_l_min", "area_cm2",
+              "cell_pairs", "tare_conc_g", "tare_dil_g", "tare_rinse_g", "include",
+              "issue_code", "notes"]
 
-READING_FIELDS = (["experiment_code", "minute"] + list(POWER)
-                  + [f"{t}_{m}" for t in ("conc", "dil", "rinse")
-                     for m in ("conductivity_us_cm", "ph", "temp_c", "weight_g")]
-                  + ["conc_sample_id", "dil_sample_id", "rinse_sample_id", "issue_code", "notes"])
+STACK_FIELDS = ["run_code", "minute"] + list(POWER) + ["issue_code", "notes"]
 
-SAMPLE_FIELDS = ["experiment_code", "sample_id", "tank", "li_mg_l", "mg_mg_l",
+TANK_FIELDS = ["run_code", "minute", "tank", "conductivity_us_cm", "ph", "temp_c",
+               "weight_g", "issue_code", "notes"]
+
+SAMPLE_FIELDS = ["sample_id", "run_code", "minute", "tank", "li_mg_l", "mg_mg_l",
                  "na_mg_l", "k_mg_l", "ca_mg_l", "toc_ppm", "issue_code", "notes"]
+
+MEASURED = ("li", "na", "mg", "k", "ca", "toc")
 
 
 def plain(number):
     """Write 2.0 as 2, so values look as they do in the sheet."""
     return int(number) if float(number).is_integer() else number
-
-
-IGNORED_WHEN_EMPTY = {"experiment_code", "minute", "issue_code", "notes"}
 
 
 def blank(value):
@@ -57,7 +59,6 @@ def blank(value):
 
 def code_of(sheet_name):
     return sheet_name.strip().split("_")[-1]
-
 
 
 def find_rinse_row(ws):
@@ -79,12 +80,12 @@ def parse_conc_start(text):
     return salt, plain(float(amount))
 
 
-def read_setup(ws, code):
+def read_run(ws, code):
     date = ws.cell(1, 2).value
     salt, amount = parse_conc_start(ws.cell(3, 9).value)
     rinse_pct = re.search(r"[\d.]+", str(ws.cell(5, 2).value or ""))
     return {
-        "code": code,
+        "run_code": code,
         "series": "new_set_mg",
         "run_date": date.date().isoformat() if hasattr(date, "date") else blank(date),
         "cem": blank(ws.cell(1, 17).value),
@@ -110,33 +111,44 @@ def read_setup(ws, code):
     }
 
 
-def read_tank(ws, row, cols):
-    return {
-        "id": blank(ws.cell(row, cols["id"]).value),
+def read_stack(ws, row, code, minute):
+    reading = {"run_code": code, "minute": minute, "issue_code": "", "notes": ""}
+    for field, column in POWER.items():
+        reading[field] = blank(ws.cell(row, column).value)
+    return reading if any(reading[f] != "" for f in POWER) else None
+
+
+def read_tank(ws, row, code, minute, tank, cols):
+    reading = {
+        "run_code": code,
+        "minute": minute,
+        "tank": tank,
         "conductivity_us_cm": blank(ws.cell(row, cols["conductivity"]).value),
         "ph": blank(ws.cell(row, cols["ph"]).value),
         "temp_c": blank(ws.cell(row, cols["temp"]).value),
         "weight_g": blank(ws.cell(row, cols["weight"]).value),
+        "issue_code": "",
+        "notes": "",
     }
+    measured = [f"{m}={blank(ws.cell(row, cols[m]).value)}"
+                for m in MEASURED if blank(ws.cell(row, cols[m]).value) != ""]
+    if not blank(ws.cell(row, cols["id"]).value) and measured:
+        # lab values with nothing to attach them to; kept here so nothing is lost
+        reading["issue_code"] = UNLABELLED_VALUES
+        reading["notes"] = ", ".join(measured)
+    has_value = any(reading[f] != "" for f in
+                    ("conductivity_us_cm", "ph", "temp_c", "weight_g", "issue_code"))
+    return reading if has_value else None
 
 
-def orphan_values(ws, row):
-    """Lab values sitting in a row that has no sample ID, so they belong to no sample."""
-    found = []
-    for prefix, cols in (("conc", CONC), ("dil", DIL)):
-        if blank(ws.cell(row, cols["id"]).value):
-            continue
-        for measure in ("li", "na", "mg", "k", "ca", "toc"):
-            value = blank(ws.cell(row, cols[measure]).value)
-            if value != "":
-                found.append(f"{prefix}_{measure}={value}")
-    return found
-
-
-def read_sample(ws, row, cols, code, tank):
+def read_sample(ws, row, code, minute, tank, cols):
+    sample_id = blank(ws.cell(row, cols["id"]).value)
+    if not sample_id:
+        return None
     return {
-        "experiment_code": code,
-        "sample_id": blank(ws.cell(row, cols["id"]).value),
+        "sample_id": sample_id,
+        "run_code": code,
+        "minute": minute,
         "tank": tank,
         "li_mg_l": blank(ws.cell(row, cols["li"]).value),
         "mg_mg_l": blank(ws.cell(row, cols["mg"]).value),
@@ -150,48 +162,43 @@ def read_sample(ws, row, cols, code, tank):
 
 
 def convert_sheet(ws, code):
-    """One sheet -> (setup row, reading rows, sample rows, warnings)."""
+    """One sheet -> (run, stack readings, tank readings, samples, warnings)."""
     rinse_row = find_rinse_row(ws)
     end = rinse_row if rinse_row else ws.max_row + 1
-    warnings = []
+    stack, tanks, samples, rinse_samples, warnings = [], [], [], [], []
 
-    rinse_by_minute, rinse_samples, samples = {}, [], []
+    # rinse block, below the main table, keyed by the minute it shares with the main table
+    rinse_rows = {}
     if rinse_row:
         for r in range(rinse_row, rinse_row + 12):
             minute = ws.cell(r, 2).value
             if not isinstance(minute, (int, float)):
                 break
-            rinse_by_minute[int(minute)] = read_tank(ws, r, CONC)
-            if blank(ws.cell(r, CONC["id"]).value):
-                rinse_samples.append(read_sample(ws, r, CONC, code, "rinse"))
+            rinse_rows[int(minute)] = r
 
-    readings = []
     for r in range(9, end):
         minute = ws.cell(r, 2).value
         if not isinstance(minute, (int, float)):
             continue
-        conc, dil = read_tank(ws, r, CONC), read_tank(ws, r, DIL)
-        rinse = rinse_by_minute.get(int(minute), {})
-        row = {"experiment_code": code, "minute": int(minute), "issue_code": "", "notes": ""}
-        for field, col in POWER.items():
-            row[field] = blank(ws.cell(r, col).value)
-        for prefix, tank in (("conc", conc), ("dil", dil), ("rinse", rinse)):
-            for measure in ("conductivity_us_cm", "ph", "temp_c", "weight_g"):
-                row[f"{prefix}_{measure}"] = tank.get(measure, "")
-            row[f"{prefix}_sample_id"] = tank.get("id", "")
-        orphans = orphan_values(ws, r)
-        has_readings = any(row[f] != "" for f in READING_FIELDS if f not in IGNORED_WHEN_EMPTY)
-        if orphans:
-            values = ", ".join(orphans)
-            row["issue_code"] = UNLABELLED_VALUES
-            row["notes"] = values
-            warnings.append(f"{code}: minute {int(minute)} has {values} but no sample ID")
-        if orphans or has_readings:
-            readings.append(row)
-        if conc["id"]:
-            samples.append(read_sample(ws, r, CONC, code, "conc"))
-        if dil["id"]:
-            samples.append(read_sample(ws, r, DIL, code, "dil"))
+        minute = int(minute)
+
+        reading = read_stack(ws, r, code, minute)
+        if reading:
+            stack.append(reading)
+
+        rows = {"conc": r, "dil": r}
+        if minute in rinse_rows:
+            rows["rinse"] = rinse_rows[minute]
+        for tank, tank_row in rows.items():
+            tank_reading = read_tank(ws, tank_row, code, minute, tank, TANKS[tank])
+            if tank_reading:
+                tanks.append(tank_reading)
+                if tank_reading["issue_code"] == UNLABELLED_VALUES:
+                    warnings.append(f"{code}: minute {minute} {tank} has "
+                                    f"{tank_reading['notes']} but no sample ID")
+            sample = read_sample(ws, tank_row, code, minute, tank, TANKS[tank])
+            if sample:
+                (rinse_samples if tank == "rinse" else samples).append(sample)
 
     samples.extend(rinse_samples)
 
@@ -201,7 +208,7 @@ def convert_sheet(ws, code):
         if sample["li_mg_l"] == "" and sample["mg_mg_l"] == "":
             warnings.append(f"{code}: sample {sample['sample_id']} has no lab results yet")
 
-    return read_setup(ws, code), readings, samples, warnings
+    return read_run(ws, code), stack, tanks, samples, warnings
 
 
 def write_csv(path, fields, rows):
@@ -209,24 +216,28 @@ def write_csv(path, fields, rows):
         writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
-    print(f"{path}: {len(rows)} rows")
+    print(f"{path.name}: {len(rows)} rows")
 
 
 def main(workbook_path, out_dir):
     workbook = openpyxl.load_workbook(workbook_path, data_only=True)
-    setups, readings, samples, warnings = [], [], [], []
+    runs, stack, tanks, samples, warnings = [], [], [], [], []
     for name in workbook.sheetnames:
         if not name.startswith("New_set"):
             continue
-        setup, run_readings, run_samples, run_warnings = convert_sheet(workbook[name], code_of(name))
-        setups.append(setup)
-        readings.extend(run_readings)
+        run, run_stack, run_tanks, run_samples, run_warnings = convert_sheet(
+            workbook[name], code_of(name))
+        runs.append(run)
+        stack.extend(run_stack)
+        tanks.extend(run_tanks)
         samples.extend(run_samples)
         warnings.extend(run_warnings)
-        print(f"{setup['code']:3s} {len(run_readings):3d} readings  {len(run_samples):2d} samples")
+        print(f"{run['run_code']:3s} {len(run_stack):3d} stack  {len(run_tanks):3d} tank  "
+              f"{len(run_samples):2d} samples")
 
-    write_csv(out_dir / "setups.csv", SETUP_FIELDS, setups)
-    write_csv(out_dir / "readings.csv", READING_FIELDS, readings)
+    write_csv(out_dir / "runs.csv", RUN_FIELDS, runs)
+    write_csv(out_dir / "stack_readings.csv", STACK_FIELDS, stack)
+    write_csv(out_dir / "tank_readings.csv", TANK_FIELDS, tanks)
     write_csv(out_dir / "samples.csv", SAMPLE_FIELDS, samples)
 
     if warnings:

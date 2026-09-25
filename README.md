@@ -69,7 +69,7 @@ uv run jupyter lab       # open notebooks/ for exploration
 
 ### Everyday workflow
 
-1. Add or correct data in `data/`: a row in `setups.csv`, the run's rows in `readings.csv`, and its lab results in `samples.csv`.
+1. Correct her workbook, then re-run the converter to rebuild the four files in `data/`.
 2. Run the model from the terminal (commands to be added).
 3. Open `output/` for the charts and tables.
 
@@ -93,8 +93,9 @@ Both update `pyproject.toml` and `uv.lock`. Commit those two files.
 Li-Research/
 ├── .gitignore                  ← ignores .venv, output/, .env, .idea, Excel lock files
 ├── data/
-│   ├── setups.csv              ← one row per experiment
-│   ├── readings.csv            ← rig readings for every run
+│   ├── runs.csv                ← one row per experiment
+│   ├── stack_readings.csv      ← power log for every run
+│   ├── tank_readings.csv       ← conductivity, pH, temp, weight per tank
 │   └── samples.csv             ← lab results for every sample
 ├── docs/
 │   └── data-format.md          ← column definitions and how to create the CSVs
@@ -130,15 +131,16 @@ data/*.csv → sources → checks → calc → fit → best_setup → cli (chart
 
 ### `data/`: raw values only
 
-The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, edit the CSV and run again; everything downstream updates.
+The CSV files hold only what was set, measured at the rig, or reported by the lab. Every derived number is calculated by the code. To correct a value, fix her workbook and re-run the converter; everything downstream updates.
 
 | File | One row per | Contents | Recorded |
 |---|---|---|---|
-| `setups.csv` | experiment | How the run was set up | before the run |
-| `readings.csv` | time mark of a run | Power log; tank conductivity, pH, temperature, weight; IDs of samples taken | during the run |
-| `samples.csv` | sample | Tank, plus Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
+| `runs.csv` | experiment | How the run was set up | before the run |
+| `stack_readings.csv` | time mark of a run | The power log | during the run |
+| `tank_readings.csv` | tank at a time mark | Conductivity, pH, temperature, weight | during the run |
+| `samples.csv` | sample | Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
 
-**[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these three files.**
+**[docs/data-format.md](docs/data-format.md) has the full column definitions, the rules, and step-by-step instructions for turning one of her spreadsheet sheets into these four files.**
 
 ## The code
 
