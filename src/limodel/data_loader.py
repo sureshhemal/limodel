@@ -41,7 +41,7 @@ class DataLoader:
         """Every table as stored, unchecked, for the checks to report on.
 
         load() refuses data that breaks the schema, which is right for calculating but
-        useless for telling her what to fix. This is the way in for that.
+        useless for saying what to fix. This is the way in for that.
         """
         return self._source.raw_tables()
 

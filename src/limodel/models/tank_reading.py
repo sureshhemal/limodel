@@ -9,8 +9,8 @@ class TankReading(BaseModel):
     """What was measured on the concentrate, diluate or rinse.
 
     A sample is drawn from a tank at a moment, so it hangs off the reading taken at
-    that moment. Most readings have none: she logs the tanks far more often than she
-    fills a sample bottle.
+    that moment. Most readings have none: the tanks are logged far more often than a
+    sample bottle is filled.
     """
 
     run_code: str

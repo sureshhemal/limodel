@@ -1,6 +1,6 @@
 # Data format
 
-How her experiment data is stored, and how to create the files for a new run.
+How the experiment data is stored, and how to create the files for a new run.
 See the [README](../README.md) for the project as a whole.
 
 ## The four files
@@ -110,25 +110,29 @@ Unique on `run_code, minute, tank`.
 
 ### Converting with the script
 
-`scripts/convert_workbook.py` converts every `New_set_*` sheet in one go:
+`limodel convert` converts every `New_set_*` sheet in one go:
 
 ```
-uv run python scripts/convert_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+uv run limodel convert
 ```
 
-It rewrites all four files and prints anything that looks wrong: sample IDs that do not carry their run's code, lab values with no sample ID, and samples still waiting on the lab. `limodel check` reports the same kinds of problem from the CSV files themselves. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what she recorded.
+It reads the workbook named by `WORKBOOK` in `.env`, and asks before replacing files that
+are already there — a value corrected in a CSV but not in the workbook would be lost.
+`--force` skips the question.
 
-Re-run it whenever she updates the workbook. Because the output is committed to git, the diff then shows exactly which values changed.
+It rewrites all four files and prints anything that looks wrong: sample IDs that do not carry their run's code, lab values with no sample ID, and samples still waiting on the lab. `limodel check` reports the same kinds of problem from the CSV files themselves. **It copies values exactly as they appear in the sheet** — no spelling is corrected, no stale value is replaced, nothing is filled in. Problems are reported, never fixed, so the files stay a faithful copy of what was recorded.
+
+Re-run it whenever the workbook changes. Because the output is committed to git, the diff then shows exactly which values changed.
 
 ### Checking the copy
 
 ```
-uv run python scripts/verify_against_workbook.py "~/Downloads/ED_data_from M-V.xlsx"
+uv run limodel verify
 ```
 
-It walks the workbook itself rather than trusting the converter, compares every value against the cell it came from, and reports anything in the sheets that did not reach the CSVs.
+It walks the workbook itself rather than trusting the converter, compares every value against the cell it came from, and reports anything in the sheets that did not reach the CSVs. It reads the same `WORKBOOK` setting.
 
-### Where the values are in her spreadsheet
+### Where the values are in the spreadsheet
 
 Each `New_set_Mg2+(…)_<CODE>` sheet has the same layout.
 
@@ -164,8 +168,8 @@ Sample IDs run two per sampling time: odd numbers are concentrate, even are dilu
 
 ### Things to watch for
 
-- **Sample IDs must carry the run's own code.** Mislabelled IDs have already appeared in her sheets (`J10` for `AJ10`, `K18` for `AK18`, and a whole rinse block labelled with the previous run's code).
-- **Copy raw readings, never the calculated block.** Some calculated cells in her sheet have values typed over the formula, so they disagree with the raw reading they came from.
+- **Sample IDs must carry the run's own code.** Mislabelled IDs have already appeared in the sheets (`J10` for `AJ10`, `K18` for `AK18`, and a whole rinse block labelled with the previous run's code).
+- **Copy raw readings, never the calculated block.** Some calculated cells have values typed over the formula, so they disagree with the raw reading they came from.
 - **Blank, never 0**, for a measurement that wasn't taken.
 - **Use the measured feed.** The nominal feed goes in `runs.csv`; the real feed concentration is the t = 0 diluate sample.
 - **Tares change between runs**, so take them from that run's own header block.
