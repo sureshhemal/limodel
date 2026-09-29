@@ -16,3 +16,6 @@ output/
 /data/*
 !/data/.gitkeep
 /data_*/
+
+# IDE database descriptors
+identifier.db
