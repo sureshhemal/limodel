@@ -16,7 +16,7 @@ A model for finding the best electrodialysis setup for separating lithium from m
 
 The approach follows §2.5 of the GO-10 manuscript: a second-order polynomial surrogate model, with XGBoost fitted only as a comparison.
 
-**Where it is now:** the data is converted from the workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. The modelling in `analyzer/` is next.
+**Where it is now:** the data is converted from the workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. `limodel analyze` leaves out the runs it cannot use and clears the readings that cannot be right, naming every one. The calculations come next.
 
 ## Setup and running
 
@@ -139,11 +139,13 @@ Li-Research/
 │   │   └── sample.py
 │   ├── analyzer/               ← the modelling
 │   │   ├── analyzer.py         ← drives the modelling, returns data
-│   │   ├── journal.py          ← the record of every run left out, and why
+│   │   ├── journal.py          ← what was left out of the modelling, and why
 │   │   ├── thresholds.py       ← every number the checks compare against
 │   │   └── preprocess/         ← getting the runs ready
 │   │       ├── preprocessor.py ← every step in order, each on what the last returned
 │   │       └── steps/          ← one class per step, runs in and runs out
+│   │           ├── inspectors/ ← one per tank, and one for the power log
+│   │           └── checks/     ← one rule each: readings in, the worst offender out
 │   ├── checks.py               ← finds every data problem, without raising
 │   ├── workbook/               ← the experiment workbook, in and out
 │   │   ├── cells.py            ← where everything sits in a run sheet
@@ -222,7 +224,7 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 | `schema/` | One [pandera](https://pandera.readthedocs.io) model per file: types, required values, ranges, uniqueness, no unexpected columns. Every table is validated as it is handed out. |
 | `models/` | One [pydantic](https://docs.pydantic.dev) model per thing — `Run`, `StackReading`, `TankReading`, `Sample` — with the nesting, the computed ids and the foreign keys. This is what `load()` returns. |
 | `checks.py` | Finds every problem in one pass without raising, and explains each in plain words. Still to add: cross-table rules such as mass balance and samples still waiting on the lab. |
-| `analyzer/` | The modelling. `Analyzer.analyze()` is the one public entry: it loads the runs, sets aside the ones it cannot use, and runs each stage of the modelling in order. It returns an `Analysis` and prints nothing. |
+| `analyzer/` | The modelling. `Analyzer.analyze()` is the one public entry: it loads the runs, sets aside the ones it cannot use, and runs each stage in order. It returns an `Analysis`, writes what it left out to the `Journal` it was given, and prints nothing. Preprocessing is a tuple of steps; the reading checks are one inspector per tank plus one for the power log, each holding the rules its own readings get. Every number those rules compare against is in `thresholds.py`. |
 | `workbook/` | The experiment workbook: `convert.py` builds the four CSV files from it, copying every value as recorded and reporting rather than correcting; `compare.py` walks the sheets and reports every value the CSV files do not match, including a reading that never arrived. `cells.py` holds the sheet layout both of them read. |
 
 ### `src/limodel/cli/`: the terminal interface
