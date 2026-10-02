@@ -22,19 +22,19 @@ def test_analyze_counts_the_runs_it_can_use(analyze):
     result = analyze()
 
     assert result.exit_code == 0
-    assert "using 2 runs, 2 with lab results" in result.output
-    assert "skipped" not in result.output
+    assert "using 2 of 2 runs" in result.output
+    assert "dropped" not in result.output
 
 
-def test_analyze_names_the_runs_still_waiting_for_the_lab(analyze, write_file, fixture_text):
+def test_analyze_names_a_run_the_lab_has_not_finished_with(analyze, write_file, fixture_text):
     data_dir = write_file("samples.csv", fixture_text("samples.csv").replace("BB1,BB,0,conc,60,3",
                                                                             "BB1,BB,0,conc,,"))
 
     result = analyze(into=data_dir)
 
     assert result.exit_code == 0
-    assert "using 2 runs, 1 with lab results" in result.output
-    assert "waiting  BB   no lab results yet" in result.output
+    assert "using 1 of 2 runs" in result.output
+    assert "dropped  run      BB             no lab results at both ends" in result.output
 
 
 def test_analyze_leaves_out_a_run_marked_not_to_be_used(analyze, write_file, fixture_text):
@@ -43,5 +43,5 @@ def test_analyze_leaves_out_a_run_marked_not_to_be_used(analyze, write_file, fix
     result = analyze(into=data_dir)
 
     assert result.exit_code == 0
-    assert "dropped  AA   not marked for use" in result.output
-    assert "using 1 runs, 1 with lab results" in result.output
+    assert "dropped  run      AA             not marked for use" in result.output
+    assert "using 1 of 2 runs" in result.output

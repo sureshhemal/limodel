@@ -2,17 +2,17 @@
 
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.steps.drop_excluded_runs import DropExcludedRuns
+from limodel.analyzer.preprocess.steps.drop_runs_missing_an_end_sample import DropRunsMissingAnEndSample
 from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.models import Run
 
 
 class Preprocessor:
-    """Runs each preprocessing step in order, each one on the runs the one before it returned.
+    """Runs each step in order, each on the runs the one before it returned.
 
-    Nothing is saved: the result is returned. The list it is given is never changed. Whatever
-    a step removes is written to the journal under that step's name, so the steps themselves
-    stay simple: runs in, runs out.
+    Nothing is saved: the result is returned. Whatever a step removes is written to the
+    journal under that step's name.
     """
 
     steps: tuple[Step, ...] = (
@@ -20,6 +20,7 @@ class Preprocessor:
         # if run is missing required field, that is already dropped by data loader from csv.
         # So, we'll not handle that issue in here anymore.
         SkipSuspectReadings(),
+        DropRunsMissingAnEndSample(),
     )
 
     def __init__(self, journal: Journal):

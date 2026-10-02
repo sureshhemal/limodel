@@ -2,7 +2,7 @@
 
 import typer
 
-from limodel.analyzer import Analyzer, Journal
+from limodel.analyzer import Action, Analyzer, Journal
 
 
 class Analyze:
@@ -19,20 +19,28 @@ class Analyze:
     def run(self):
         """Run the modelling, print what it worked from, and hand the analysis back."""
         analysis = Analyzer(self.loader, self.journal).analyze()
-        total = len(analysis.used) + len(analysis.waiting)
 
-        for entry in self._in_reading_order(self.journal.entries):
-            typer.echo(f"  {entry.action}  {entry.id}   {entry.reason}")
+        for entry in self._find_entries_in_order(self.journal.entries):
+            typer.echo(f"  {entry.action!s:<9}{self._find_type(entry):<9}"
+                       f"{entry.id:<15}{entry.reason}")
 
-        typer.echo(f"using {total} runs, {len(analysis.used)} with lab results")
-
-        if analysis.waiting:
-            typer.echo(f"  waiting  {' '.join(analysis.waiting)}   no lab results yet")
+        typer.echo(f"using {len(analysis.used)} of {self._find_runs_loaded(analysis)} runs")
 
         return analysis
 
+    def _find_runs_loaded(self, analysis):
+        """How many runs there were before any were dropped."""
+        dropped = [entry for entry in self.journal.entries if entry.action is Action.DROP]
+
+        return len(analysis.used) + len(dropped)
+
     @staticmethod
-    def _in_reading_order(entries):
+    def _find_type(entry):
+        """A plain word for the kind of record the entry is about."""
+        return "reading" if entry.model.endswith("Reading") else entry.model.lower()
+
+    @staticmethod
+    def _find_entries_in_order(entries):
         """The entries as a reader wants them: by run, then by the minute of the reading.
 
         A check hands back its worst offender first, which is what clearing wants and the

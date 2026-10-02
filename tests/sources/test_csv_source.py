@@ -10,9 +10,11 @@ def test_reads_each_file_into_its_own_table(data_dir):
     source = CsvSource(data_dir)
 
     assert source.runs()["run_code"].tolist() == ["AA", "BB"]
-    assert source.stack_readings()["minute"].tolist() == [0, 5, 0]
-    assert source.tank_readings()["tank"].tolist() == ["conc", "dil", "rinse", "conc"]
-    assert source.samples()["sample_id"].tolist() == ["AA1", "AA2", "BB1"]
+    assert source.stack_readings()["minute"].tolist() == [0, 5, 240, 0, 240]
+    assert source.tank_readings()["tank"].tolist() == [
+        "conc", "dil", "rinse", "conc", "dil", "conc", "dil", "conc", "dil"]
+    assert source.samples()["sample_id"].tolist() == [
+        "AA1", "AA2", "AA3", "AA4", "BB1", "BB2", "BB3", "BB4"]
 
 
 def test_applies_the_types_from_the_schema(data_dir):
@@ -28,7 +30,7 @@ def test_keeps_a_blank_as_missing_rather_than_zero(data_dir):
 
     without_toc = samples.index[samples["toc_ppm"].isna()].tolist()
 
-    assert without_toc == ["AA2", "BB1"]
+    assert without_toc == ["AA2", "AA3", "AA4", "BB1", "BB2", "BB3", "BB4"]
     assert samples.loc["AA1", "toc_ppm"] == 0.9749
 
 

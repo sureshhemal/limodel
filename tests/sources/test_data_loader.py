@@ -7,6 +7,11 @@ from limodel.data_loader import DataLoader
 from limodel.models import Run, Sample, StackReading, TankReading
 
 
+def reading_called(reading_id, run):
+    """One of a run's tank readings, found by its id rather than by where it sits."""
+    return next(reading for reading in run.tank_readings if reading.id == reading_id)
+
+
 @pytest.fixture
 def loader(monkeypatch, data_dir):
     monkeypatch.setattr(config, "DATA_SOURCE", "csv")
@@ -42,8 +47,9 @@ def test_a_run_carries_its_readings(loader):
 
     assert all(isinstance(reading, StackReading) for reading in run.stack_readings)
     assert all(isinstance(reading, TankReading) for reading in run.tank_readings)
-    assert [reading.minute for reading in run.stack_readings] == [0, 5]
-    assert [reading.id for reading in run.tank_readings] == ["AA:conc:0", "AA:dil:0", "AA:rinse:0"]
+    assert [reading.minute for reading in run.stack_readings] == [0, 5, 240]
+    assert [reading.id for reading in run.tank_readings] == [
+        "AA:conc:0", "AA:conc:240", "AA:dil:0", "AA:dil:240", "AA:rinse:0"]
 
 
 def test_a_sample_hangs_off_the_reading_it_was_drawn_from(loader):
@@ -57,8 +63,8 @@ def test_a_sample_hangs_off_the_reading_it_was_drawn_from(loader):
 
 
 def test_a_reading_with_no_sample_has_none(loader):
-    run = loader.load()[0]
-    rinse = run.tank_readings[2]
+    """The rinse is logged like the others and sampled only when the lab asks for it."""
+    rinse = reading_called("AA:rinse:0", loader.load()[0])
 
     assert rinse.tank == "rinse"
     assert rinse.sample is None
@@ -82,7 +88,7 @@ def test_the_keys_join_the_objects_up(loader):
 
 def test_a_blank_is_missing_rather_than_zero(loader):
     run = loader.load()[0]
-    rinse = run.tank_readings[2]
+    rinse = reading_called("AA:rinse:0", run)
 
     assert rinse.temp_c is None
     assert run.tank_readings[0].sample.na_mg_l is None

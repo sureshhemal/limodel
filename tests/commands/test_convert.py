@@ -36,10 +36,12 @@ def test_convert_writes_the_four_files(convert, tmp_path):
     assert result.exit_code == 0
     assert "converted 2 runs: AA BB" in result.output
     assert [row["run_code"] for row in rows(out / "runs.csv")] == ["AA", "BB"]
-    assert [row["minute"] for row in rows(out / "stack_readings.csv")] == ["0", "5", "0"]
+    assert [row["minute"] for row in rows(out / "stack_readings.csv")] == \
+           ["0", "5", "240", "0", "240"]
     assert [row["tank"] for row in rows(out / "tank_readings.csv")] == \
-           ["conc", "dil", "rinse", "conc"]
-    assert [row["sample_id"] for row in rows(out / "samples.csv")] == ["AA1", "AA2", "BB1"]
+           ["conc", "dil", "rinse", "conc", "dil", "conc", "dil", "conc", "dil"]
+    assert [row["sample_id"] for row in rows(out / "samples.csv")] == \
+           ["AA1", "AA2", "AA3", "AA4", "BB1", "BB2", "BB3", "BB4"]
 
 
 def test_convert_copies_a_value_exactly_as_recorded(convert, tmp_path):
