@@ -9,10 +9,8 @@ from limodel.models import Run
 class Step(ABC):
     """One preprocessing step: runs in, the runs that survive it out.
 
-    A step that filters returns a shorter list and leaves the runs themselves alone. A step
-    that cleans returns every run it was given, with values it cannot believe set to None.
-    Either way it writes what it left out to the journal and prints nothing: the command
-    reads the journal when the analysis is over and does the talking.
+    A filtering step returns fewer runs. A cleaning step returns them all with values it
+    cannot believe set to None. Either way it prints nothing.
     """
 
     name: str  # a short label for the report, e.g. "not marked for use"

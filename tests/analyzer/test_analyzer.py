@@ -15,24 +15,25 @@ def analyzer(monkeypatch, data_dir):
     return Analyzer(DataLoader(), Journal())
 
 
-def test_uses_every_run_the_lab_has_reported_on(analyzer):
+def test_uses_every_run_the_lab_has_answered_for(analyzer):
     analysis = analyzer.analyze()
 
     assert [run.run_code for run in analysis.used] == ["AA", "BB"]
     assert all(isinstance(run, Run) for run in analysis.used)
-    assert analysis.waiting == []
 
 
-def test_sets_aside_a_run_with_no_lab_results(monkeypatch, write_file, fixture_text):
+def test_sets_aside_a_run_the_lab_has_not_finished_with(monkeypatch, write_file, fixture_text):
     data_dir = write_file("samples.csv",
                           fixture_text("samples.csv").replace("BB1,BB,0,conc,60,3", "BB1,BB,0,conc,,"))
     monkeypatch.setattr(config, "DATA_SOURCE", "csv")
     monkeypatch.setattr(config, "DATA_DIR", data_dir)
+    journal = Journal()
 
-    analysis = Analyzer(DataLoader(), Journal()).analyze()
+    analysis = Analyzer(DataLoader(), journal).analyze()
 
     assert [run.run_code for run in analysis.used] == ["AA"]
-    assert analysis.waiting == ["BB"]
+    assert [(entry.id, entry.reason) for entry in journal.entries] == [
+        ("BB", "no lab results at both ends")]
 
 
 def test_it_fills_the_journal_it_was_given(monkeypatch, write_file, fixture_text):

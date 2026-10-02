@@ -14,8 +14,8 @@ class RejectTheHeaviest(Check):
     field_name = "weight_g"
     label = "weight"
 
-    def find(self, readings):
-        judgeable = self.judgeable(readings)
+    def find_worst_offender(self, readings):
+        judgeable = self.find_judgeable_readings(readings)
         if not judgeable:
             return None
 
@@ -30,8 +30,8 @@ class RejectEveryPh(Check):
     field_name = "ph"
     label = "pH"
 
-    def find(self, readings):
-        judgeable = self.judgeable(readings)
+    def find_worst_offender(self, readings):
+        judgeable = self.find_judgeable_readings(readings)
 
         return (judgeable[0], "ph", "no pH wanted") if judgeable else None
 
@@ -41,12 +41,12 @@ class ConcTank(TankInspector):
 
     tank = "conc"
 
-    def _checks(self):
+    def _find_checks(self):
         return (RejectTheHeaviest(),)
 
 
 class ConcTankWithTwoChecks(ConcTank):
-    def _checks(self):
+    def _find_checks(self):
         return (RejectTheHeaviest(), RejectEveryPh())
 
 

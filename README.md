@@ -143,7 +143,9 @@ Li-Research/
 │   │   ├── thresholds.py       ← every number the checks compare against
 │   │   └── preprocess/         ← getting the runs ready
 │   │       ├── preprocessor.py ← every step in order, each on what the last returned
-│   │       └── steps/          ← one class per step, runs in and runs out
+│   │       └── steps/          ← one class per step: the runs marked not to be used,
+│   │           │                 the readings that cannot be right, the runs the lab
+│   │           │                 cannot answer for
 │   │           ├── inspectors/ ← one per tank, and one for the power log
 │   │           └── checks/     ← one rule each: readings in, the worst offender out
 │   ├── checks.py               ← finds every data problem, without raising

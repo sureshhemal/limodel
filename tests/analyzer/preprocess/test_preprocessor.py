@@ -6,6 +6,7 @@ from limodel import config
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.preprocessor import Preprocessor
 from limodel.analyzer.preprocess.steps.drop_excluded_runs import DropExcludedRuns
+from limodel.analyzer.preprocess.steps.drop_runs_missing_an_end_sample import DropRunsMissingAnEndSample
 from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.data_loader import DataLoader
@@ -31,7 +32,8 @@ def runs(monkeypatch, data_dir):
 
 def test_the_steps_in_order():
     assert [type(step) for step in Preprocessor.steps] == [DropExcludedRuns,
-                                                           SkipSuspectReadings]
+                                                           SkipSuspectReadings,
+                                                           DropRunsMissingAnEndSample]
 
 
 def test_run_gives_back_the_runs_the_modelling_can_use(runs):

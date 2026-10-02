@@ -8,12 +8,12 @@ class DiluateTankInspector(TankInspector):
 
     tank = "dil"
 
-    def _checks(self):
+    def _find_checks(self):
         return (
-            self._a_weight_unlike_the_others(),
-            self._a_ph_the_solution_cannot_reach(),
-            self._a_ph_that_moved_too_fast(),
-            self._a_temperature_the_room_cannot_reach(),
-            self._a_temperature_that_moved_too_fast(),
-            self._a_conductivity_jump_that_comes_back(),
+            self._find_a_weight_unlike_the_others(),
+            self._find_a_ph_the_solution_cannot_reach(),
+            self._find_a_ph_that_moved_too_fast(),
+            self._find_a_temperature_the_room_cannot_reach(),
+            self._find_a_temperature_that_moved_too_fast(),
+            self._find_a_conductivity_jump_that_comes_back(),
         )

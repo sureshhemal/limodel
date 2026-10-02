@@ -66,8 +66,11 @@ def workbook(tmp_path):
         conc=("AA1", 1267.4, 5.845, 21.4, 2119.7, 63.56, None, 2.974, None, None, 0.9749),
         dil=("AA2", 19130.1, 5.889, 21.4, 2117.8, 403.1, None, 1657, None, None, None))
     row(aa, 10, 5, (15.44, 0.082, 15.4, 72.4))
-    aa.cell(12, 1).value = "Rinse"
-    row(aa, 12, 0, (), conc=(None, 21651.4, 5.04, None, 4074.8))
+    row(aa, 11, 240, (15.1, 0.081, 15.05, 72.0),
+        conc=("AA3", 5095.9, 5.6, 21.6, 2140.2, 210.5, None, 45.2),
+        dil=("AA4", 16161.0, 5.7, 21.6, 2090.4, 255.3, None, 1480))
+    aa.cell(13, 1).value = "Rinse"
+    row(aa, 13, 0, (), conc=(None, 21651.4, 5.04, None, 4074.8))
 
     bb = book.create_sheet("New_set_Mg2+(07_11_26)_BB")
     for cell, value in SETUP.items():
@@ -75,7 +78,11 @@ def workbook(tmp_path):
     bb["B1"], bb["Q1"], bb["E2"] = datetime(2026, 7, 11), "Pristine", 4000
     bb["Y2"], bb["Y3"], bb["Y4"] = 100, 120, 40
     row(bb, 9, 0, (14, 0.08, 13.9, 71),
-        conc=("BB1", 1300, 5.9, 21, 2100, 60, None, 3, None, None, None))
+        conc=("BB1", 1300, 5.9, 21, 2100, 60, None, 3, None, None, None),
+        dil=("BB2", 19000, 5.9, 21, 2110, 400, None, 1650))
+    row(bb, 10, 240, (13.5, 0.08, 13.4, 70.5),
+        conc=("BB3", 5000, 5.7, 21.2, 2120, 200, None, 40),
+        dil=("BB4", 16000, 5.8, 21.2, 2085, 260, None, 1500))
 
     path = tmp_path / "ED_data.xlsx"
     book.save(path)

@@ -19,12 +19,8 @@ class Action(Enum):
 class Entry:
     """One thing the analysis left out, and why.
 
-    `id` and `model` locate it: every model carries an id, so "AJ" is a run, "AJ:conc:120"
-    a tank reading and "AJ:120" a power reading. `field_name` is empty for a drop, because
-    a drop is about the whole record rather than one of its values.
-
-    The reason travels with the id so the terminal can say more than a count. Anything that
-    disappears without a reason looks like a bug in the program.
+    `id` locates it, because every model carries one: "AJ" is a run, "AJ:conc:120" a tank
+    reading. `field_name` is empty for a drop, which is about the whole record.
     """
 
     action: Action
@@ -35,12 +31,10 @@ class Entry:
 
 
 class Journal:
-    """Holds what every stage of the analysis set aside, so one reader can see all of it.
+    """What every stage of the analysis set aside, in one place.
 
-    It is made empty and handed to the analyzer, which hands it on down. Each stage writes
-    to the same one, in the order things happened, so nothing has to pass exclusions back up
-    through its return value. Nothing here prints; the command reads it when the analysis is
-    over and does the talking.
+    Made empty and handed to the analyzer, which hands it on. Nothing here prints; the
+    command reads it when the analysis is over.
     """
 
     def __init__(self):

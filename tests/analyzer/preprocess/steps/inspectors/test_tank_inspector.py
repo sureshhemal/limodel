@@ -8,7 +8,7 @@ from tests.analyzer.preprocess.steps.inspectors.test_inspector import RejectTheH
 class ConcTank(TankInspector):
     tank = "conc"
 
-    def _checks(self):
+    def _find_checks(self):
         return (RejectTheHeaviest(),)
 
 
