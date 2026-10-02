@@ -13,12 +13,8 @@ from limodel.models import Run
 class SkipSuspectReadings(Step):
     """Clears a value a check cannot believe, and writes down why.
 
-    No run is dropped. The reading keeps its minute and its other values; only the one
-    that failed turns into None.
-
-    One inspector per tank and one for the power log, each holding the checks its own
-    readings get. A tank that turns out to need its own rule is given it in its own class,
-    and the others do not move.
+    No run is dropped and the reading keeps everything else. One inspector per tank and one
+    for the power log, each holding the checks its own readings get.
     """
 
     name = "suspect reading"

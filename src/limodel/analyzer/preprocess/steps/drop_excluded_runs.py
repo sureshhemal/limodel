@@ -6,11 +6,10 @@ from limodel.models import Run
 
 
 class DropExcludedRuns(Step):
-    """Drops every run whose mark says not to use it.
+    """Keeps the runs marked for use.
 
-    Whether a run counts is decided at the bench and recorded with the run, so this step
-    only obeys that mark. If no run is left, the run stops: that means the wrong file, not
-    a few set-aside experiments.
+    The mark is a decision taken at the bench, so this only obeys it. If no run is left it
+    stops: that means the wrong file.
     """
 
     name = "not marked for use"

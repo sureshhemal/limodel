@@ -7,9 +7,9 @@ from dataclasses import dataclass
 class Instrument:
     """Where one instrument's readings are, what to call it, and what it reads in.
 
-    The supply and the multimeter read the same quantity in different units -- amps against
-    milliamps -- so a check that holds the two against each other cannot share one unit
-    between them, and a reason that does not name the instrument leaves the reader guessing.
+    The supply and the multimeter read the same quantity in different units, so a pair
+    cannot share one unit, and a reason that does not name the instrument leaves the reader
+    guessing.
     """
 
     field_name: str   # the column it is written down in

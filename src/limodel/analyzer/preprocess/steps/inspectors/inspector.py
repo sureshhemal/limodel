@@ -8,30 +8,26 @@ from limodel.analyzer.thresholds import Thresholds
 class Inspector(ABC):
     """Runs its checks over one part of a run, clearing the values they reject.
 
-    A check is asked for the single worst reading it can see. That value is written down
-    and cleared, and the check is asked again -- because the level it compares against is
-    better once a bad value is gone. The loop stops when a check finds nothing, or when it
-    has cleared as much of one series as it is allowed to.
-
-    Each inspector says which readings of a run it looks at, so a run's tank log and its
-    power log are never mixed up.
+    A check is asked for the worst reading it can see. That value is written down, cleared,
+    and the check asked again, because the level it compares against is better once a bad
+    value is gone.
     """
 
     def __init__(self, thresholds: Thresholds = Thresholds()):
         self.thresholds = thresholds
-        self.checks = self._checks()
+        self.checks = self._find_checks()
 
     @abstractmethod
-    def _checks(self):
+    def _find_checks(self):
         """The checks this inspector runs, in the order they run."""
 
     @abstractmethod
-    def _readings(self, run):
+    def _find_readings(self, run):
         """The readings of a run this inspector looks at, oldest first."""
 
     def inspect(self, run, journal):
         """Clears every value this inspector's checks reject, and answers with the readings."""
-        readings = self._readings(run)
+        readings = self._find_readings(run)
 
         for check in self.checks:
             self._clear_what_it_rejects(check, readings, journal)
@@ -40,8 +36,8 @@ class Inspector(ABC):
 
     def _clear_what_it_rejects(self, check, readings, journal):
         """One check, asked again after each value it rejects, until it finds nothing."""
-        for _ in range(self._most_it_may_clear(check.judgeable(readings))):
-            worst = check.find(readings)
+        for _ in range(self._find_clearing_limit(check.find_judgeable_readings(readings))):
+            worst = check.find_worst_offender(readings)
             if worst is None:
                 return
 
@@ -49,6 +45,6 @@ class Inspector(ABC):
             journal.skip(reading, field_name, reason)
             setattr(reading, field_name, None)
 
-    def _most_it_may_clear(self, judgeable):
+    def _find_clearing_limit(self, judgeable):
         """How many readings one series may lose before the loop gives up."""
         return max(1, int(len(judgeable) * self.thresholds.most_of_a_series_removable))

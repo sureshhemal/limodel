@@ -16,13 +16,13 @@ def test_it_says_which_value_it_judges(check):
 
 
 def test_a_reading_inside_the_range_is_accepted(check, readings):
-    assert check.find(readings(ph=(5.9, 4.3, 4.5))) is None
+    assert check.find_worst_offender(readings(ph=(5.9, 4.3, 4.5))) is None
 
 
 def test_a_reading_below_the_range_is_rejected(check, readings):
     given = readings(ph=(5.9, 0.072, 4.5))
 
-    reading, field_name, reason = check.find(given)
+    reading, field_name, reason = check.find_worst_offender(given)
 
     assert reading is given[1]
     assert field_name == "ph"
@@ -32,32 +32,32 @@ def test_a_reading_below_the_range_is_rejected(check, readings):
 def test_a_reading_above_the_range_is_rejected(check, readings):
     given = readings(ph=(5.9, 13.4, 4.5))
 
-    reading, _, _ = check.find(given)
+    reading, _, _ = check.find_worst_offender(given)
 
     assert reading is given[1]
 
 
 def test_the_edges_of_the_range_are_allowed(check, readings):
-    assert check.find(readings(ph=(2.0, 12.0, 7.0))) is None
+    assert check.find_worst_offender(readings(ph=(2.0, 12.0, 7.0))) is None
 
 
 def test_it_names_the_earliest_of_several(check, readings):
     given = readings(ph=(0.5, 5.9, 0.8))
 
-    reading, _, _ = check.find(given)
+    reading, _, _ = check.find_worst_offender(given)
 
     assert reading is given[0]
 
 
 def test_readings_without_the_value_are_passed_over(check, readings):
-    assert check.find(readings(ph=(None, 5.9, 4.5))) is None
+    assert check.find_worst_offender(readings(ph=(None, 5.9, 4.5))) is None
 
 
 def test_a_single_reading_can_still_be_rejected(check, readings):
     """Nothing to compare with, and nothing needed: the value is wrong by itself."""
     given = readings(ph=(0.072,))
 
-    reading, _, _ = check.find(given)
+    reading, _, _ = check.find_worst_offender(given)
 
     assert reading is given[0]
 
@@ -66,7 +66,7 @@ def test_it_serves_the_temperature_too(readings):
     check = ValueOutsideTheRange("temp_c", "temperature", (5.0, 40.0))
     given = readings(temp_c=(21.4, 95.0))
 
-    reading, field_name, reason = check.find(given)
+    reading, field_name, reason = check.find_worst_offender(given)
 
     assert reading is given[1]
     assert field_name == "temp_c"
@@ -76,6 +76,6 @@ def test_it_serves_the_temperature_too(readings):
 def test_it_changes_nothing(check, readings):
     given = readings(ph=(5.9, 0.072, 4.5))
 
-    check.find(given)
+    check.find_worst_offender(given)
 
     assert [reading.ph for reading in given] == [5.9, 0.072, 4.5]
