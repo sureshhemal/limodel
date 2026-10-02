@@ -1,0 +1,567 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+% headings: bold, barely larger than the text, well spaced
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.5em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+
+\begin{document}
+
+\begin{center}
+  {\large\bfseries A surrogate model for Li/Mg selectivity in selective electrodialysis}\\[0.35em]
+  {\normalsize Progress report}\\[0.9em]
+  {\small Suresh Hemal \quad\textbullet\quad 28 September 2026}
+\end{center}
+\vspace{0.4em}
+\hrule
+\vspace{1.2em}
+
+\section{The question being answered}
+
+The task is to use the bench dataset to predict lithium transport with a polynomial surrogate
+model, following the method of Section 2.5 of the GO-10 manuscript, and so to answer a design
+question:
+
+\begin{quote}
+\emph{What operating setup gives the best lithium selectivity over magnesium, without
+breaking the membranes and without leaving most of the lithium behind?}
+\end{quote}
+
+Stated as an optimisation, the quantity to be maximised is permselectivity,
+
+\begin{equation}
+P_{\mathrm{Li/Mg}} \;=\; \frac{t_{\mathrm{Li}}/t_{\mathrm{Mg}}}{c_{\mathrm{Li}}/c_{\mathrm{Mg}}},
+\qquad
+t_{\mathrm{Li}} = \frac{n_{\mathrm{Li}}}{n_{\mathrm{Li}} + 2n_{\mathrm{Mg}}},
+\qquad
+t_{\mathrm{Mg}} = \frac{2n_{\mathrm{Mg}}}{n_{\mathrm{Li}} + 2n_{\mathrm{Mg}}},
+\end{equation}
+
+where $n_i$ are the moles of each ion gained by the concentrate over a run and $c_i$ the molar
+concentrations measured in the diluate at its start. $P = 1$ means the membrane transports the
+two ions in whatever ratio the feed presents; $P > 1$ means lithium is favoured. Two
+constraints are imposed on any answer:
+
+\begin{itemize}[nosep]
+  \item starting stack voltage no greater than $20\unit{V}$, above which membranes fail;
+  \item lithium recovery of at least $35\%$, so that a selective but idle setup is rejected.
+\end{itemize}
+
+\section{The dataset}
+
+The dataset currently holds twenty-one runs. All share a $400\unit{mg/L}$ lithium feed, ten
+cell pairs, $6\unit{cm^2}$ of membrane area and $0.2\unit{L/min}$ flow. Three factors vary:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+Factor & Levels & Varied in \\
+\midrule
+Current density & 3, 6, 12, 24 mA/cm$^2$ & the current arm \\
+Mg/Li ratio & 5, 10, 20, 40, 60 (by mass) & the ratio arm \\
+Membrane & GO-10, pristine, PDA/PEI/15CE, & both \\
+                     & PDA/GO10/PEI & \\
+Starting concentrate & 0.5 g/L LiCl, 5 g/L NaCl, 5 g/L LiCl & the 24 mA/cm$^2$ runs \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each run contributes a power log every 15 minutes, tank readings (conductivity, pH,
+temperature and weight) for the concentrate, diluate and rinse, and five or more samples per
+tank for ICP-OES analysis. In total the dataset holds 891 power readings, 1049 tank readings
+and 345 samples. Seventeen runs currently carry laboratory results and can be modelled; the
+remainder join the model as soon as their results are recorded, with no change to the program.
+
+The design holds total charge constant at $48\unit{mA\,h/cm^2}$: every run at
+$12\unit{mA/cm^2}$ lasted 4 hours, every run at $6$ lasted 8, at $3$ lasted 16 and at $24$
+lasted 2. Current density and run duration are therefore not independent, a point returned to
+in Section~\ref{sec:limits}.
+
+\subsection*{Quantities and constants}
+
+The model will be fitted to quantities computed from the raw readings by the definitions
+below, rather than read from any derived cell. Setting them out here fixes what each symbol
+means for the rest of the project.
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+Constant & Value & Note \\
+\midrule
+Molar mass, Li & 6.94 g/mol & see footnote \\
+Molar mass, Mg & 24.305 g/mol & \\
+Charge number, Li$^+$ & $z = 1$ & \\
+Charge number, Mg$^{2+}$ & $z = 2$ & each mole carries two moles of charge \\
+Faraday constant & 96\,485 C/mol & \\
+Membrane area & 6 cm$^2$ & constant across the series \\
+Cell pairs & 10 & \\
+Flow rate & 0.2 L/min & \\
+Solution density & 1 g/mL & assumed, to turn a tank weight into a volume \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For a tank of tare weight $w_0$ at a reading $w$, and a measured concentration $c$ in mg/L of
+an ion of molar mass $M$:
+
+\begin{align}
+V &= \frac{w - w_0}{1000} \ \ \text{[L]},
+&
+n &= \frac{c\,V}{1000\,M} \ \ \text{[mol]},
+&
+\text{equivalents} &= z\,n .
+\end{align}
+
+Writing $n_i$ for the moles of ion $i$ \emph{gained by the concentrate} between the first and
+last sampled moment of a run, and $c_i^{\,\mathrm{dil}}$ for the molar concentration measured
+in the diluate at the first of those moments:
+
+\begin{align}
+t_{\mathrm{Li}} &= \frac{n_{\mathrm{Li}}}{n_{\mathrm{Li}} + 2n_{\mathrm{Mg}}},
+&
+t_{\mathrm{Mg}} &= \frac{2n_{\mathrm{Mg}}}{n_{\mathrm{Li}} + 2n_{\mathrm{Mg}}},
+&
+P &= \frac{t_{\mathrm{Li}}/t_{\mathrm{Mg}}}{c_{\mathrm{Li}}^{\,\mathrm{dil}} / c_{\mathrm{Mg}}^{\,\mathrm{dil}}},
+\\[0.4em]
+\text{recovery} &= \frac{100\,n_{\mathrm{Li}}}{c_{\mathrm{Li}}^{\,\mathrm{dil}} V^{\,\mathrm{dil}}},
+&
+J_{\mathrm{Li}} &= \frac{n_{\mathrm{Li}}}{A\,\Delta t},
+&
+J &= \frac{\bar{I}}{A},
+\\[0.4em]
+Q &= \bar{I}\,\Delta t \ \ \text{[C]},
+&
+\eta_{\mathrm{Li}} &= \frac{100\,F\,n_{\mathrm{Li}}}{N\,Q},
+&
+R &= \frac{c_{\mathrm{Mg}}^{\,\mathrm{dil}}}{c_{\mathrm{Li}}^{\,\mathrm{dil}}},
+\end{align}
+
+with $A$ the membrane area, $N$ the number of cell pairs, $\bar{I}$ the mean measured current
+and $\Delta t$ the elapsed time of the measurement window.
+
+\footnotesize
+\textbf{Footnote on the lithium molar mass.} 6.94 g/mol is used rather than the standard
+6.941. The choice does not affect $P$ at all --- the molar mass appears in both
+$t_{\mathrm{Li}}/t_{\mathrm{Mg}}$ and $c_{\mathrm{Li}}/c_{\mathrm{Mg}}$ and cancels exactly
+--- and affects $t_{\mathrm{Li}}$ only in the fifth decimal and recovery by $0.01\%$. It is
+kept because it is the value used at the bench.
+\normalsize
+
+\section{Work completed}
+
+Nothing has been calculated from the data yet, and no result is reported here. The work so far
+has been to put the dataset and the program on a footing where the calculations, once written,
+can be trusted and repeated.
+
+\subsection{The dataset is now machine-readable, and its provenance is checked}
+
+The source workbook holds one sheet per run, with the readings, the derived quantities and the
+results laid out together. It has been converted into four tables --- runs, power
+readings, tank readings and samples --- each holding only what was set at the bench or
+reported by the laboratory. No derived quantity is copied across; all of them will be computed
+from the raw values.
+
+The conversion copies values exactly as recorded and corrects nothing. To guarantee that, a
+second, independent check walks the source sheets and compares every one of the
+\textbf{10{,}494} values against the table built from it, reporting any disagreement. The
+dataset can therefore be rebuilt at any time and shown to be a faithful copy of its source.
+
+\subsection{Data-quality checks are automated}
+
+Two kinds of check now run over the dataset. The first enforces structure: types, required
+values, permitted ranges, and unique sample identifiers. The second examines the readings
+themselves, and is built so that a mistyped or mis-transcribed value cannot reach a
+calculation unnoticed. The rules are derived from each run's own numbers rather than from
+fixed constants, so they apply unchanged to runs not yet performed.
+
+\begin{itemize}[nosep]
+  \item \textbf{Values that are physically impossible.} A tank cannot weigh less than the
+        empty tank, nor change by more than a tenth of its contents between two readings.
+        Anything breaching this is excluded from the calculation --- the affected moment is
+        dropped and the run measured over the remaining window --- and reported.
+  \item \textbf{Values that disagree with their own run.} A reading far from both its
+        neighbours, while those neighbours agree with each other, is reported for review. This
+        applies to conductivity, pH, voltage and current, which are measured often enough
+        within a run to support the comparison.
+  \item \textbf{Values that disagree with the second instrument.} Voltage and current are
+        each recorded twice, on the supply and on a multimeter. The two normally track closely,
+        so a disagreement between them is a sharp and independent test that needs no statistics.
+  \item \textbf{Runs that cannot be calculated at all,} because the laboratory results they
+        need have not arrived. These are named in the output
+        with the reason, so that no result is ever quoted without the reader knowing how many
+        runs it came from.
+\end{itemize}
+
+Every check reports; none edits the data. The dataset stays a faithful copy of its source, and
+is rebuilt from it whenever the source changes.
+
+Two devices do most of the work, and both judge a reading against its own run rather than
+against any fixed expectation. Both are worth a paragraph, because the rest of the section
+refers to them.
+
+\textbf{1. A median-based score, to notice a change that is out of character.} For a column
+read many times during a run, the changes between consecutive readings are collected. Two
+summaries are taken from them: the typical change, and the typical distance of a change from
+that typical value --- the \emph{median absolute deviation}. Both are medians, deliberately
+rather than averages, because one wrong value pulls an average towards itself and so hides
+inside the very spread it inflates, whereas a median does not move. A change is then measured in
+multiples of that typical distance; beyond 3.5 multiples it is noticeable. Nothing about the
+equipment or the tank size needs to be known, and a quiet run is judged on a finer scale than a
+lively one, automatically.
+
+Writing $x_1,\dots,x_n$ for one column's readings within a run, in time order, and
+$d_i = x_{i+1} - x_i$ for the change between two consecutive readings:
+
+\begin{align}
+\tilde{d} &= \operatorname{median}\bigl(d_1,\dots,d_{n-1}\bigr),
+&
+\mathrm{MAD} &= \operatorname{median}\bigl(\,\lvert d_i - \tilde{d}\rvert\,\bigr),
+&
+z_i &= \frac{0.6745\,\bigl(d_i - \tilde{d}\bigr)}{\mathrm{MAD}},
+\end{align}
+
+and a change is noticeable when $\lvert z_i \rvert > 3.5$. The factor $0.6745$ is a conversion,
+not a tuning knob: for data with the usual bell-shaped scatter the median absolute deviation
+sits at about $0.6745$ of the standard deviation, so dividing by it puts $z$ on the familiar
+scale where $3.5$ means ``three and a half times the ordinary scatter''. Where a column is held
+deliberately constant through a run, $\mathrm{MAD}$ is zero and the score cannot be formed ---
+which is why temperature and supply current are given a plain tolerance instead.
+
+\textbf{2. A jump-and-back test, to tell a wrong reading from a real change.} Being noticeable
+is not enough on its own, because a run genuinely changes --- often fastest at the end. What
+marks a wrong reading is that the series jumps away and immediately jumps back, so the reading
+disagrees with both its neighbours while those two agree with each other. Requiring the second
+change to undo at least 70\% of the first separates the two cases. For a change $d_i$ that has
+been found noticeable, the share undone by the change that follows it is
+
+\begin{equation}
+\rho_i \;=\; \frac{-\,d_{i+1}}{d_i}
+\;=\;
+\begin{cases}
+\dfrac{\lvert d_{i+1}\rvert}{\lvert d_i \rvert} & \text{if the two changes have opposite signs},\\[0.9em]
+0 & \text{otherwise (the series kept moving the same way)},
+\end{cases}
+\end{equation}
+
+and the reading $x_{i+1}$ lying between them is judged wrong when $\rho_i \geq 0.7$. The two
+rules applied to tank weight need no statistic at all: with $w_0$ the weight of the empty tank,
+a reading is excluded when $x_i \leq w_0$, or when
+$\lvert d_i \rvert > 0.10 \times \operatorname{median}(x_1,\dots,x_n)$.
+
+The table below shows both tests on an invented series:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+ & A genuine change & One mistyped reading \\
+\midrule
+Readings & 1{,}270\quad 1{,}490\quad 1{,}750\quad 1{,}990 &
+           1{,}270\quad 1{,}490\quad 14{,}900\quad 1{,}990 \\
+Changes  & $+220$\quad $+260$\quad $+240$ &
+           $+220$\quad $+13{,}410$\quad $-12{,}910$ \\
+Noticeable? & no --- all three are ordinary & yes --- two changes stand out \\
+Reversed?   & no --- every change continues upward &
+              yes --- the second undoes 96\% of the first \\
+Verdict     & the run is rising; nothing to report &
+              the middle reading is wrong \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Used together, the first device finds candidates and the second discards the ones that are
+simply the process moving. On this dataset that reduces the readings raised for review by
+roughly an order of magnitude, which is the difference between a list someone reads and a list
+someone ignores.
+
+Table~\ref{tab:checks} sets out what is applied to each reading.
+
+\begin{table}[htbp]
+\centering
+\footnotesize
+\caption{Checks applied to each reading. \emph{Excluded} means the calculation may not use
+that moment; the run is measured over the remaining window and the trim is reported.
+\emph{Reported} means the value is raised for review and otherwise used unchanged.}
+\label{tab:checks}
+\begin{tabular}{@{}l p{8.8cm} l@{}}
+\toprule
+Reading & Check & Consequence \\
+\midrule
+Tank weight & At or below the weight of the empty tank & excluded \\
+            & Changes by more than a tenth of the tank between two readings & excluded \\
+            & Noticeable against the run's own changes, and at least 20 g & reported \\
+\addlinespace
+Conductivity & Noticeable against the run's own changes, and reversed by the next reading &
+reported \\
+\addlinespace
+pH & Moves by more than a whole unit between readings & reported \\
+   & Noticeable against the run's own changes, and reversed by the next reading & reported \\
+\addlinespace
+Temperature & Moves by more than 2 $^{\circ}$C between readings & reported \\
+            & Outside 5 to 40 $^{\circ}$C & reported \\
+\addlinespace
+Supply voltage & Noticeable against the run's own changes, and reversed by the next reading &
+reported \\
+Meter voltage & As above & reported \\
+Meter current & As above & reported \\
+Supply current & No test of this kind: it is held constant through a run, so there is no
+variation to measure against & --- \\
+\addlinespace
+\multicolumn{3}{@{}l}{\emph{Comparisons between the two instruments, which need no statistics:}} \\
+Voltage pair & Supply and multimeter voltage differ by more than 1 V & reported \\
+Current pair & Supply current, converted to mA, falls outside 0.62 to 1.6 times the
+multimeter current & reported \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A wrong reading in a frequently measured column raises two changes --- the jump away and the
+jump back --- which are one finding, belonging to the reading between them, and are reported as
+one. Tank weight is the exception: it is recorded only when a sample is taken, five times in a
+typical run, so a wrong value at the start or the end of a run has no neighbour on one side and
+no jump back to pair with. That is why weight is judged against the tank's own size and tare
+rather than against the run's variation, and why it is the only reading whose failure can
+exclude anything.
+
+\subsection{The checks are governed by stated constants, in one place}
+
+Each rule compares against a constant chosen from the dataset rather than by taste, and all of
+them live in a single file, so that revising one is a single recorded decision rather than an
+edit scattered through the program.
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}l l p{8.3cm}@{}}
+\toprule
+Constant & Value & Reason for the value \\
+\midrule
+Impossible weight step & 10\% of the tank & Sampling removes tens of grams and water
+transport adds tens of grams, so a change of this size cannot occur between two readings.
+Expressed as a share so that it holds for every tank size. \\
+Reportable weight step & 20 g & Below this a flagged step is noise: many series vary by well
+under a gram between readings, which would make any change look extreme. \\
+Median-based score & 3.5 & The cutoff in multiples of the typical distance described
+above; the standard figure for this score. Used only on columns measured often enough within a
+run to have a typical distance at all. \\
+Jump-and-back share & 0.7 & How much of a jump the next change must undo for the reading
+between them to be judged wrong rather than the run to have moved. \\
+pH step & 1 unit & Consecutive pH readings move by hundredths. \\
+Temperature step & 2 $^{\circ}$C & Temperature is held to a tenth of a degree, so its
+variation within a run is nil and no statistic can be formed from it. \\
+Voltage disagreement & 1 V & Supply and multimeter normally agree to a few hundredths of a
+volt, so a gap of this size indicates a transcription error rather than instrument drift. \\
+Current ratio & 0.62 to 1.6 & The supply reads consistently above the multimeter, so the two
+are compared as a ratio rather than a difference. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{The program}
+
+The analysis is a small command-line program with an automated test suite, so that every
+number in a future paper can be regenerated from the raw readings by a single command. Four
+commands exist: one rebuilds the four data tables from the workbook, copying values exactly;
+one reports, in plain language, anything in the data that fails a check;
+one compares every value against the workbook cell it came from; and one runs the modelling.
+Forty-nine automated tests cover the loading, the checks and the commands, and run on every
+change.
+
+The source is version-controlled and available at
+\url{https://github.com/sureshhemal/limodel} --- currently a private repository, so access can
+be granted on request. Its README documents the setup, the commands and the structure, and the
+definitions in this report are also kept alongside the code so that the two cannot drift apart.
+
+\section{The model to be fitted, and what the data can support}
+\label{sec:limits}
+
+The intended form is a second-order polynomial in the two settings that can be dialled,
+fitted separately for each quantity a constraint is placed on:
+
+\begin{equation}
+\boxed{\;
+\hat{y} \;=\; b_0 \;+\; b_1 J \;+\; b_2 R \;+\; b_3 J^2 \;+\; b_4 R^2 \;+\; b_5 JR
+\;}
+\qquad y \in \{\,P,\ \text{recovery},\ V_0\,\}
+\end{equation}
+
+where $J$ is current density in mA/cm$^2$ and $R$ the Mg/Li molar ratio of the feed. Six
+coefficients are fitted per outcome, by least squares:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+Term & Reads as & What it would say \\
+\midrule
+$b_0$ & intercept & the level of the surface \\
+$b_1 J$ & linear in current & whether more current helps or hurts \\
+$b_2 R$ & linear in ratio & the cost of magnesium in the feed \\
+$b_3 J^2$ & curvature in current & that a best current exists, rather than an extreme \\
+$b_4 R^2$ & curvature in ratio & whether the magnesium penalty eases or worsens \\
+$b_5 JR$ & interaction & whether the best current depends on the magnesium load \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three quantities are fitted because the question is constrained: $P$ is maximised, while
+recovery and starting voltage are the gates, and a gate cannot be checked without being
+predicted. The membrane enters as a category rather than a continuous variable, so the surface
+is fitted per membrane. The constants of the optimisation, as distinct from the fitted
+coefficients, are:
+
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+Constant & Value & Source \\
+\midrule
+Maximum starting voltage & 20 V & above this the membranes fail \\
+Minimum lithium recovery & 35\% & provisional; may be revised \\
+Current density searched & 3 to 24 mA/cm$^2$ & the tested range; no extrapolation \\
+Mg/Li ratio searched & the tested range & set by the runs performed \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Four points follow from the design rather than from the method, and are better stated now than
+discovered later.
+
+\textbf{The model must be tested by holding out one run at a time, not by splitting the runs
+into two piles.} The usual practice is to fit on three quarters of the data and test on the
+remaining quarter. With seventeen runs that would mean fitting six coefficients to thirteen runs
+and judging the result on four --- and the verdict would depend on which four. Holding back one
+run at a time instead, and repeating until each has been held back once, uses every run for
+fitting and still tests every run. As further runs are recorded, each is also a prediction the
+model made before seeing it, which is a stronger test than any division of the runs already in
+hand.
+
+\textbf{The interaction term is not estimable from the present design.} Current density varies
+only at the lowest Mg/Li ratio, and the ratio varies only at $12\unit{mA/cm^2}$. No run
+combines a high current with a high magnesium load, so $b_5$ would be fitted from no evidence.
+Two or three runs off these axes --- for example $6$ and $24\unit{mA/cm^2}$ at a middle ratio
+--- would make it estimable. Until such runs exist, the term will be reported as unsupported
+rather than fitted and quoted, and the model will be presented without it.
+
+\textbf{Current density and run duration cannot be separated.} Because total charge was held
+at $48\unit{mA\,h/cm^2}$, duration is exactly $48/J$. Any prediction at a given current
+density therefore carries the matching duration with it, and this will be stated wherever the
+model is reported.
+
+\textbf{A quadratic in $R$ may be the wrong shape.} A parabola has a turning point, so fitted
+to a quantity that falls steadily with magnesium load it will eventually turn upward and
+predict rising selectivity at high ratios, which is not physical. Substituting $\ln R$ for $R$
+keeps the same six-term structure and stays monotone. Which form to prefer will be decided by
+the cross-validated error once the results are computed, and I will report both.
+
+\section{What this arrangement already gives}
+
+Everything listed here is true of the program as it stands, not of the finished model.
+
+\textbf{Anyone with the source workbook can rebuild the dataset and run the checks
+themselves.} The rebuild is a single command, and it needs nothing from me: no manual step, no
+intermediate file that has to be passed along, no knowledge of how the program works.
+
+\textbf{Recording a new run requires no change whatever to the program.} A sheet added to the
+workbook is picked up on the next rebuild. Nothing is enumerated or hard-coded, so the twenty-second
+run costs exactly as much effort as it costs to perform.
+
+\textbf{Laboratory results are taken up as soon as they exist.} A run whose analysis has not
+come back is set aside and named in the output; when its numbers are recorded, the same rebuild
+includes it. No separate action is needed, and nothing has to be remembered.
+
+\textbf{The dataset holds only what was observed.} It contains what was set at the bench and
+what the laboratory reported --- and no derived quantity at all. Any figure produced from it
+therefore traces back through stated formulas to a weight, a concentration or a meter reading,
+rather than to a cell someone had already worked out.
+
+\textbf{That copy is checked, not trusted.} A second, independent pass compares all
+\textbf{10{,}494} values against the cells they came from, so the dataset's faithfulness to its
+source is demonstrable rather than assumed.
+
+\textbf{The checks are applied identically to every run.} There are no per-run adjustments and
+nothing is special-cased. This matters because it removes an entire class of error: a rule that is
+copied a row too far, a duration entered by hand for one run and not another, a reference that
+shifts when a sheet is edited.
+
+\textbf{Nothing can be dropped quietly.} A reading that cannot be true blocks its own use and
+says so; anything merely unusual is printed for review and otherwise left alone. Any output states
+how many runs it was built from, so a figure and the evidence behind it always travel together.
+
+\textbf{The thresholds are stated, editable and recorded.} All of them live in one file, each
+beside a sentence explaining it, and changing one requires no programming. Because that file is
+under version control, every such change carries a date and an author --- so if a number moves,
+when and why it moved can be answered.
+
+\textbf{The program is tested.} Forty-nine automated tests cover the reading of the data, the
+checks and the commands, and they run on every change. A test, once written, is permanent: a later
+edit that breaks the behaviour fails immediately instead of quietly producing a different answer.
+
+\textbf{It is built to outlast this series of experiments.} The tables are read through a single
+component, so moving from files to a database later is a change of configuration rather than of
+method. Sodium, potassium and calcium already have their places in the data structures, so another
+series can be carried through the same program without redesigning it. And the definitions, the
+constants and the reasoning in this report are versioned in the same repository as the program
+that implements them, so the description and the implementation cannot quietly diverge.
+
+\section{Next steps}
+
+\textbf{1. Finish preparing the data.} Set aside the runs whose laboratory results have not
+arrived, apply the exclusion rules above to the readings, and choose for each run the stretch of
+time over which it will be measured --- normally the whole run, and a shorter stretch where a
+reading at one end cannot be used.
+
+\textbf{2. Compute one line of results per run.} For each run: how much lithium and magnesium
+crossed into the concentrate, what share of the current each of them carried, the resulting
+selectivity, the fraction of the lithium recovered, and the voltage the stack started at. These
+come from the raw readings by the formulas in Section 2, in code, so that they can be recomputed
+at any time.
+
+\textbf{3. Check that arithmetic by hand.} Work one run through on paper, step by step, and
+confirm the program agrees. Everything afterwards rests on this chain being right, so it is worth
+proving once rather than assuming.
+
+\textbf{4. Fit the equation --- three of them.} One equation predicts selectivity from the
+current density and the feed ratio; a second predicts recovery; a third predicts voltage. The
+second and third are needed because a limit cannot be respected unless it can be predicted.
+
+Each equation is then tested in a way that does not flatter it: one run is held back, the
+equation is fitted to the remaining runs, and the held-back run is predicted and compared with
+what actually happened. That is repeated until every run has been held back once. The result is a
+single, honest figure --- how far a prediction of a \emph{new} run is likely to be out --- which
+is the number that should accompany any recommendation.
+
+Two things are tried at this step and decided by that figure rather than by preference. First,
+the feed ratio is used both directly and as its logarithm, because a plain squared term must
+eventually curve upward and so would predict selectivity \emph{improving} at high magnesium
+content, which cannot be right. Second, a different and much more flexible kind of model --- one
+built from hundreds of small rules rather than a single smooth equation --- is fitted to the same
+table. If the flexible model predicts no better, that is evidence the simple equation has
+captured what the data contains, which is a useful thing to be able to state.
+
+\textbf{5. Find the best allowed setting.} With the three equations in hand, step across the
+range of current densities and feed ratios that were actually tested, discard every combination
+whose predicted voltage exceeds 20 V or whose predicted recovery falls below 35\%, and keep the
+combination with the highest predicted selectivity. Because the magnesium content of a real
+brine is given rather than chosen, the useful answer is not a single point but a recommendation
+per feed ratio: for this much magnesium, run this current. Reported separately for each membrane.
+
+\textbf{6. Produce the figures and tables} for the manuscript, each regenerated from the raw
+readings by a single command.
+
+\end{document}

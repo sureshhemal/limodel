@@ -16,7 +16,7 @@ A model for finding the best electrodialysis setup for separating lithium from m
 
 The approach follows §2.5 of the GO-10 manuscript: a second-order polynomial surrogate model, with XGBoost fitted only as a comparison.
 
-**Where it is now:** the data is converted from the workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. The calculations (`calc`, `fit`, `best_setup`) are still to be written.
+**Where it is now:** the data is converted from the workbook, `limodel verify` compares it cell by cell with that workbook, and `limodel check` reports everything wrong with it. `limodel analyze` leaves out the runs it cannot use and clears the readings that cannot be right, naming every one. The calculations come next.
 
 ## Setup and running
 
@@ -60,21 +60,27 @@ uv run limodel --help     # the commands
 uv run limodel convert    # rebuild the data files from the workbook
 uv run limodel check      # list everything wrong with the data
 uv run limodel verify     # compare every value with the workbook
+uv run limodel analyze    # calculate, fit, and report the best setup
 ```
 
 `uv run` always uses the project's `.venv`, so there's no need to activate it.
 
 `check` never fails, even on unreadable data — that is the point of it. The commands that compute results refuse invalid data instead; see [Everyday workflow](#everyday-workflow).
 
-> Only `convert`, `check` and `verify` exist so far. Each new command is an `@app.command()` function in `src/limodel/cli/main.py`.
+> `convert`, `check`, `verify` and `analyze` exist so far; `analyze` reports what the modelling can use, and grows a stage as each module is written. Each new command is an `@app.command()` function in `src/limodel/cli/main.py`.
 
 ### 6. Tests and notebooks
 
 ```
 uv run pytest            # run the tests in tests/
 uv run pytest -v         # one line per test
-uv run jupyter lab       # open notebooks/ for exploration
+uv run jupyter lab       # then open notebooks/explore.ipynb
 ```
+
+`notebooks/explore.ipynb` loads the runs through `DataLoader` and shows, cell by cell: one
+run as objects, the settings of every run, how conductivity and weight move, the chemistry
+worked through for a single run, the same table for all of them, the two arms of the design
+plotted, and the weights that cannot be true. Run it top to bottom.
 
 The tests also run on every pull request, through `.github/workflows/tests.yml`.
 
@@ -85,7 +91,7 @@ The tests also run on every pull request, through `.github/workflows/tests.yml`.
 3. Fix those in the workbook and convert again.
 4. **`uv run limodel verify`** — confirms the files still hold exactly what the workbook holds.
 5. Repeat until `check` reports nothing.
-6. Run the model (commands still to be written) and open `output/` for the charts and tables.
+6. **`uv run limodel analyze`** — the modelling. It names the runs it cannot use, then reports what it found.
 
 ### Adding packages
 
@@ -114,7 +120,8 @@ Li-Research/
 ├── docs/
 │   └── data-format.md          ← column definitions and how to create the CSVs
 ├── output/                     ← generated reports (git-ignored)
-├── notebooks/                  ← exploration
+├── notebooks/
+│   └── explore.ipynb           ← load the runs and see every number, cell by cell
 ├── src/limodel/
 │   ├── config.py               ← settings, read once from .env
 │   ├── data_loader.py          ← the front door: the only thing the app depends on
@@ -130,29 +137,33 @@ Li-Research/
 │   │   ├── stack_reading.py
 │   │   ├── tank_reading.py     ← carries the sample drawn from it, if there was one
 │   │   └── sample.py
+│   ├── analyzer/               ← the modelling
+│   │   ├── analyzer.py         ← drives the modelling, returns data
+│   │   ├── journal.py          ← what was left out of the modelling, and why
+│   │   ├── thresholds.py       ← every number the checks compare against
+│   │   └── preprocess/         ← getting the runs ready
+│   │       ├── preprocessor.py ← every step in order, each on what the last returned
+│   │       └── steps/          ← one class per step, runs in and runs out
+│   │           ├── inspectors/ ← one per tank, and one for the power log
+│   │           └── checks/     ← one rule each: readings in, the worst offender out
 │   ├── checks.py               ← finds every data problem, without raising
 │   ├── workbook/               ← the experiment workbook, in and out
 │   │   ├── cells.py            ← where everything sits in a run sheet
 │   │   ├── convert.py          ← the workbook → the four CSV files
 │   │   └── compare.py          ← the four CSV files → every difference from the workbook
-│   ├── calc.py                 ← raw → flux, t, P, recovery, start voltage
-│   ├── fit.py                  ← polynomial fits + CV
-│   ├── best_setup.py           ← gates + search for highest P
 │   └── cli/                    ← terminal-only, replaced in phase 2
 │       ├── main.py             ← the terminal app: which commands it has, and their options
 │       ├── settings.py         ← a setting turned into a value, or a plain message and exit
 │       ├── commands/           ← one class per command, holding what it does
 │       │   ├── convert.py
 │       │   ├── check.py
-│       │   └── verify.py
-│       ├── charts.py           ← curve data → PNG
-│       └── report.py           ← writes output/
+│       │   ├── verify.py
+│       │   └── analyze.py       ← prints what the analyzer found
 └── tests/
     ├── conftest.py             ← fixtures
     ├── fixtures/*.csv          ← small test data, independent of any workbook
     ├── commands/                ← one file per command
     ├── sources/                ← loader, source and checks tests
-    └── test_calc.py
 ```
 
 ## How the pieces fit
@@ -160,12 +171,12 @@ Li-Research/
 ```
                  ┌─ raw_tables() ─► checks ───────────────────────► `limodel check`
 data/*.csv ─► DataLoader
-                 └─ load() ─► list[Run] ─► calc ─► fit ─► best_setup ─► cli ─► output/
+                 └─ load() ─► list[Run] ─► analyzer ─────────────────► cli ─► output/
 ```
 
 Everything reads its data through `DataLoader`, which picks a source from `config.DATA_SOURCE`.
 
-- **`load()`** validates every table against its schema and returns the runs as objects, so the calculations can never run on bad data.
+- **`load()`** validates every table against its schema and returns the runs as objects, so the modelling can never run on bad data.
 - **`raw_tables()`** hands the tables over unchecked, which is how `check` reports problems instead of refusing to open the files.
 
 The objects are the shape the science reads:
@@ -182,7 +193,7 @@ run.tank_readings[0].sample.li_mg_l # the sample drawn from it, or None
 
 A sample belongs to the tank reading it was drawn from, so weight and concentration — the two halves of "how many moles" — sit on the same object. Every object also has a derived `id` (`AE`, `AE:60`, `AE:conc:60`, `AE1`) and its foreign keys (`run_id`, `tank_id`), computed from the natural keys rather than stored.
 
-`calc` turns those objects into **one summary row per run**, and from there it is pandas again: a 21-row table is what `fit` hands to scikit-learn.
+The modelling turns those objects into **one summary row per run**, and from there it is pandas again: a 21-row table is what gets handed to scikit-learn.
 
 ### `data/`: raw values only, and not in git
 
@@ -213,10 +224,8 @@ Pure Python. It never prints, saves files or draws charts. Every function return
 | `schema/` | One [pandera](https://pandera.readthedocs.io) model per file: types, required values, ranges, uniqueness, no unexpected columns. Every table is validated as it is handed out. |
 | `models/` | One [pydantic](https://docs.pydantic.dev) model per thing — `Run`, `StackReading`, `TankReading`, `Sample` — with the nesting, the computed ids and the foreign keys. This is what `load()` returns. |
 | `checks.py` | Finds every problem in one pass without raising, and explains each in plain words. Still to add: cross-table rules such as mass balance and samples still waiting on the lab. |
+| `analyzer/` | The modelling. `Analyzer.analyze()` is the one public entry: it loads the runs, sets aside the ones it cannot use, and runs each stage in order. It returns an `Analysis`, writes what it left out to the `Journal` it was given, and prints nothing. Preprocessing is a tuple of steps; the reading checks are one inspector per tank plus one for the power log, each holding the rules its own readings get. Every number those rules compare against is in `thresholds.py`. |
 | `workbook/` | The experiment workbook: `convert.py` builds the four CSV files from it, copying every value as recorded and reporting rather than correcting; `compare.py` walks the sheets and reports every value the CSV files do not match, including a reading that never arrived. `cells.py` holds the sheet layout both of them read. |
-| `calc.py` | Turns raw readings into physical quantities (volume = (weight − tare)/1000, moles, charge, current density), then one summary row per run: Li and Mg flux, t_Li, t_Mg, P, Li recovery, starting voltage. |
-| `fit.py` | Fits the second-order polynomials for P, Li recovery and starting voltage (inputs: current density and Mg/Li ratio; one model per membrane). Reports R², RMSE and cross-validation error. |
-| `best_setup.py` | For each membrane and Mg/Li ratio, scans current density within the tested range, drops settings that break the voltage or recovery gates, and returns the one with the highest P, together with the curve points. |
 
 ### `src/limodel/cli/`: the terminal interface
 
@@ -229,10 +238,9 @@ The only part that prints, draws or writes files. It is replaced by Django + Vue
 | `limodel convert` | Rebuilds the four data files from the workbook. Asks before replacing them, unless `--force` |
 | `limodel check` | Lists every problem in the data, and never fails |
 | `limodel verify` | Compares every value with the cell it came from in the workbook, named by `WORKBOOK` in `.env` |
+| `limodel analyze` | Runs the modelling: names the runs it cannot use, then each stage as it is written |
 
-`summary`, `fit`, `best` and `report` follow as the modules they depend on are written.
-
-`charts.py` turns curve data into PNGs with matplotlib; `report.py` writes the `output/` folder.
+`analyze` gains a stage as each part of the modelling is written.
 
 ### `tests/`
 
@@ -246,7 +254,8 @@ Fixture CSV files under `tests/fixtures/` stand in for real data, so the tests d
 | `commands/test_check.py` | the command prints the list and exits 0 even when the data is unreadable |
 | `commands/test_convert.py` | the four files written from a workbook, a value copied as recorded, a warning instead of a correction, and the question before replacing files |
 | `commands/test_verify.py` | a workbook built in the test, matching and mismatching, and a missing `WORKBOOK` |
-| `test_calc.py` | still to write: the calculated P, t_Li and recovery for a known run must match the spreadsheet |
+| `commands/test_analyze.py` | the runs it counts, and the ones it names as still waiting on the lab |
+| `analyzer/test_analyzer.py` | which runs the modelling works from, returned as data and printing nothing |
 
 ## Phases
 

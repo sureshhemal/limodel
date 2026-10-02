@@ -3,6 +3,8 @@
 import typer
 
 from limodel import config
+from limodel.analyzer import Journal
+from limodel.cli.commands.analyze import Analyze
 from limodel.cli.commands.check import Check
 from limodel.cli.commands.convert import Convert
 from limodel.cli.commands.verify import Verify
@@ -28,6 +30,12 @@ def convert(force: bool = typer.Option(False, "--force", "-f",
 def check():
     """List everything wrong with the data. Fix these in the workbook, then run again."""
     Check(DataLoader()).run()
+
+
+@app.command()
+def analyze():
+    """Calculate every run, fit the polynomials, and report the best setup."""
+    Analyze(DataLoader(), Journal()).run()
 
 
 @app.command()
