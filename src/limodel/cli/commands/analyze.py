@@ -21,12 +21,28 @@ class Analyze:
         analysis = Analyzer(self.loader, self.journal).analyze()
         total = len(analysis.used) + len(analysis.waiting)
 
-        for left_out in self.journal.dropped:
-            typer.echo(f"  dropped  {left_out.run_code}   {left_out.reason}")
+        for entry in self._in_reading_order(self.journal.entries):
+            typer.echo(f"  {entry.action}  {entry.id}   {entry.reason}")
 
         typer.echo(f"using {total} runs, {len(analysis.used)} with lab results")
 
         if analysis.waiting:
-            typer.echo(f"  skipped  {' '.join(analysis.waiting)}   no lab results yet")
+            typer.echo(f"  waiting  {' '.join(analysis.waiting)}   no lab results yet")
 
         return analysis
+
+    @staticmethod
+    def _in_reading_order(entries):
+        """The entries as a reader wants them: by run, then by the minute of the reading.
+
+        A check hands back its worst offender first, which is what clearing wants and the
+        opposite of what reading wants: it puts minute 225 above minute 95. A run left out
+        whole has no minute, so it comes before its own readings.
+        """
+        def when(entry):
+            parts = entry.id.split(":")
+            minute = int(parts[-1]) if parts[-1].isdigit() else -1
+
+            return parts[0], minute, entry.id
+
+        return sorted(entries, key=when)

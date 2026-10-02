@@ -1,5 +1,6 @@
 """Step 1: dropping the runs that are not marked for use."""
 
+from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.models import Run
 
@@ -14,7 +15,7 @@ class DropExcludedRuns(Step):
 
     name = "not marked for use"
 
-    def apply(self, runs: list[Run]) -> list[Run]:
+    def apply(self, runs: list[Run], journal: Journal) -> list[Run]:
         marked_for_use = [run for run in runs if run.include]
 
         if not marked_for_use and runs:

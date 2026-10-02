@@ -6,6 +6,7 @@ from limodel import config
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.preprocessor import Preprocessor
 from limodel.analyzer.preprocess.steps.drop_excluded_runs import DropExcludedRuns
+from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.data_loader import DataLoader
 
@@ -17,7 +18,7 @@ class DropByCode(Step):
         self.name = name
         self.run_code = run_code
 
-    def apply(self, runs):
+    def apply(self, runs, journal):
         return [run for run in runs if run.run_code != self.run_code]
 
 
@@ -29,7 +30,8 @@ def runs(monkeypatch, data_dir):
 
 
 def test_the_steps_in_order():
-    assert [type(step) for step in Preprocessor.steps] == [DropExcludedRuns]
+    assert [type(step) for step in Preprocessor.steps] == [DropExcludedRuns,
+                                                           SkipSuspectReadings]
 
 
 def test_run_gives_back_the_runs_the_modelling_can_use(runs):
@@ -57,8 +59,8 @@ def test_it_writes_down_what_a_step_took_out(monkeypatch, runs):
 
     Preprocessor(journal).run(runs)
 
-    assert [(left_out.run_code, left_out.reason) for left_out in journal.dropped] == [
-        ("BB", "not marked for use")]
+    assert [(entry.id, entry.model, entry.reason) for entry in journal.entries] == [
+        ("BB", "Run", "not marked for use")]
 
 
 def test_every_step_writes_to_the_same_journal(monkeypatch, runs):
@@ -67,7 +69,7 @@ def test_every_step_writes_to_the_same_journal(monkeypatch, runs):
 
     Preprocessor(journal).run(runs)
 
-    assert [(left_out.run_code, left_out.reason) for left_out in journal.dropped] == [
+    assert [(entry.id, entry.reason) for entry in journal.entries] == [
         ("AA", "first"), ("BB", "second")]
 
 
@@ -76,4 +78,4 @@ def test_it_writes_nothing_when_no_run_is_taken_out(runs):
 
     Preprocessor(journal).run(runs)
 
-    assert journal.dropped == ()
+    assert journal.entries == ()

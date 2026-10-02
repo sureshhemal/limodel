@@ -44,8 +44,8 @@ def test_it_fills_the_journal_it_was_given(monkeypatch, write_file, fixture_text
     analysis = Analyzer(DataLoader(), journal).analyze()
 
     assert [run.run_code for run in analysis.used] == ["BB"]
-    assert [(left_out.run_code, left_out.reason) for left_out in journal.dropped] == [
-        ("AA", "not marked for use")]
+    assert [(entry.id, entry.model, entry.reason) for entry in journal.entries] == [
+        ("AA", "Run", "not marked for use")]
 
 
 def test_prints_nothing(analyzer, capsys):

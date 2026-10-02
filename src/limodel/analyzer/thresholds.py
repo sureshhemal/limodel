@@ -1,8 +1,7 @@
 """Every number the reading checks compare against, in one place.
 
-Each one is written next to the evidence it came from, so changing it is a decision made
-with the data in view rather than a guess. A step is handed these rather than holding its
-own numbers, so a test can pass different ones and nothing has to be edited in two places.
+Change a number here and every check that uses it changes with it. No check holds a number
+of its own, and a test can hand a check different ones.
 """
 
 from dataclasses import dataclass
@@ -10,49 +9,73 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Thresholds:
-    """What counts as impossible, and what counts as worth a second look."""
+    """The numbers the checks use."""
 
-    # --- weights: five readings per series, so the rules are physical, not statistical ---
+    # --- how many readings are needed, and how many may go ---
 
-    # A step larger than this share of the tank's own median weight cannot happen: no one
-    # adds or removes a tenth of a tank between two readings. At 0.10 this flags exactly
-    # three readings in 340 steps, all three known breaks; at 0.05 it also picks up AL's
-    # diluate, which is odd but not impossible.
-    impossible_weight_step_share: float = 0.10
+    # How many readings a series needs before a check will judge it. With two, each looks
+    # as odd as the other, so the check says nothing.
+    fewest_readings_to_judge: int = 3
 
-    # Below this, a flagged weight step is not worth reporting: 7 of 51 series have a MAD
-    # under 1 g, which makes a 10 g wobble score as an outlier.
-    suspect_weight_step_g: float = 20.0
+    # How much of one series a check may throw away. If it needs more than a third, the
+    # file is wrong rather than the readings, so it stops. More than half would be worse
+    # than useless: a median follows the bad values once they outnumber the good ones, and
+    # the check starts clearing the readings that were right.
+    most_of_a_series_removable: float = 0.34
 
-    # --- the statistic used on the columns that have enough readings ---
+    # --- the tank weights ---
 
-    # Modified z-score, (0.6745 x (value - median)) / MAD. 3.5 is the usual cutoff.
-    modified_z: float = 3.5
+    # How far a weight may sit from its tank's usual weight. Further than a tenth away and
+    # the reading is wrong. The three known bad weights are 90% or more away; every good
+    # one is within 5%. A share rather than grammes, because the rinse holds some 4 kg and
+    # the concentrate some 2.1 kg.
+    impossible_weight_share: float = 0.10
 
-    # A single bad reading shows up as a jump followed by a jump back. The reversal has to
-    # undo at least this share of the jump to count as one. Without it, MAD alone flags 98
-    # of 957 conductivity differences.
-    reversal_share: float = 0.7
+    # --- the pH ---
 
-    # --- columns with their own physical scale ---
+    # How much the pH may move, and over how long. Readings are 5 to 240 minutes apart, so
+    # a rate rather than a step: strict on readings close together, forgiving of slow drift.
+    most_ph_change: float = 1.5
+    most_ph_change_in_minutes: float = 15.0
 
-    # Consecutive pH readings move by hundredths. A whole unit is a typo: AT's concentrate
-    # reads 0.072 between 5.083 and 5.06.
-    suspect_ph_step: float = 1.0
+    # The range a pH reading has to sit in. Outside it the reading is wrong whatever the
+    # readings around it say -- these solutions cannot be at pH 0.07.
+    plausible_ph: tuple[float, float] = (2.0, 12.0)
 
-    # Temperature is held to a tenth of a degree, so its MAD is exactly zero in 46 of 58
-    # series and no statistic can be built from it. A tolerance stands in.
-    suspect_temp_step_c: float = 2.0
+    # --- the temperature ---
+
+    # How much the temperature may move, and over how long. The fastest real change in the
+    # data is 0.9 C per quarter of an hour, so 2 C is a wide allowance.
+    most_temp_change: float = 2.0
+    most_temp_change_in_minutes: float = 15.0
+
+    # The range a temperature has to sit in. The water sits at room temperature: every
+    # reading in the data is between 19.9 and 23.0 C.
     plausible_temp_c: tuple[float, float] = (5.0, 40.0)
 
-    # --- the two instruments, held against each other ---
+    # --- the conductivity, which climbs or falls all run ---
 
-    # Supply and multimeter voltage agree to a median of 0.03 V across 889 paired rows.
-    # A gap this size means one of them was written down wrong: 9 rows, every one a
-    # dropped or added leading digit.
-    suspect_voltage_gap_v: float = 1.0
+    # How big a jump has to be before it counts, as a share of what the series usually
+    # reads. Below a tenth, an ordinary wobble on a smooth series looks like a jump.
+    smallest_jump_share: float = 0.10
 
-    # The supply reads about 14% higher than the multimeter throughout (median ratio 1.14,
-    # 5th to 95th 1.07-1.49), so the currents are compared as a ratio, not a difference.
-    # This band flags 5 rows, including a supply current recorded as 0.46 A for 36.8 mA.
+    # How much of the jump the next reading has to put back. A real change of level stays
+    # changed; a digit written down wrong is undone at once. At 0.7 this finds seven
+    # readings, every one a digit too many or too few.
+    comes_back_share: float = 0.7
+
+    # --- the supply current, which is held steady all run ---
+
+    # How far the current may sit from its run's usual reading. It is held to within 2.2%
+    # in nineteen of twenty-one runs, so a tenth away is far outside what the supply does.
+    impossible_current_share: float = 0.10
+
+    # --- the supply against the multimeter ---
+
+    # How far apart the two voltages may be. They agree to about 0.03 V, so a gap this wide
+    # means a digit was written down wrong.
+    largest_voltage_gap_v: float = 1.0
+
+    # The range the two currents may differ by, as a ratio. The supply reads about a
+    # seventh higher throughout, so they are compared by ratio and not by subtraction.
     plausible_current_ratio: tuple[float, float] = (0.62, 1.6)
