@@ -43,8 +43,8 @@ def power_readings():
 @pytest.fixture
 def a_run():
     """A run carrying nothing but the readings a test cares about."""
-    def build(run_code="AA", tank_readings=(), stack_readings=()):
-        return Run(run_code=run_code, series="new_set_mg", run_date="2026-07-09", cem="GO-10",
+    def build(run_code="AA", tank_readings=(), stack_readings=(), cem="GO-10"):
+        return Run(run_code=run_code, series="new_set_mg", run_date="2026-07-09", cem=cem,
                    aem="AR 204", li_feed_mg_l=400, mg_feed_mg_l=2000, conc_start_salt="LiCl",
                    conc_start_g_l=0.5, rinse_salt="Na2SO4", rinse_wt_pct=2, flow_l_min=0.2,
                    area_cm2=6, cell_pairs=10, tare_conc_g=96.2, tare_dil_g=111.5,

@@ -75,7 +75,7 @@ def workbook(tmp_path):
     bb = book.create_sheet("New_set_Mg2+(07_11_26)_BB")
     for cell, value in SETUP.items():
         bb[cell] = value
-    bb["B1"], bb["Q1"], bb["E2"] = datetime(2026, 7, 11), "Pristine", 4000
+    bb["B1"], bb["Q1"], bb["E2"] = datetime(2026, 7, 11), "GO-10", 4000
     bb["Y2"], bb["Y3"], bb["Y4"] = 100, 120, 40
     row(bb, 9, 0, (14, 0.08, 13.9, 71),
         conc=("BB1", 1300, 5.9, 21, 2100, 60, None, 3, None, None, None),

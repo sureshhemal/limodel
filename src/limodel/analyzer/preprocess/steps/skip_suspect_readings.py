@@ -2,7 +2,7 @@
 
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.steps.inspectors.conc_tank_inspector import ConcTankInspector
-from limodel.analyzer.preprocess.steps.inspectors.diluate_tank_inspector import DiluateTankInspector
+from limodel.analyzer.preprocess.steps.inspectors.dilute_tank_inspector import DiluteTankInspector
 from limodel.analyzer.preprocess.steps.inspectors.power_log_inspector import PowerLogInspector
 from limodel.analyzer.preprocess.steps.inspectors.rinse_tank_inspector import RinseTankInspector
 from limodel.analyzer.preprocess.steps.step import Step
@@ -22,7 +22,7 @@ class SkipSuspectReadings(Step):
     def __init__(self, thresholds: Thresholds = Thresholds()):
         self.inspectors = (
             ConcTankInspector(thresholds),
-            DiluateTankInspector(thresholds),
+            DiluteTankInspector(thresholds),
             RinseTankInspector(thresholds),
             PowerLogInspector(thresholds),
         )

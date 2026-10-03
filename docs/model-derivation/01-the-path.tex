@@ -1,0 +1,439 @@
+\section{The path a number takes}
+
+This section is the map. It follows one number from a cell in a CSV file to a coefficient in
+a printed equation, naming the class that does each piece of work. The arithmetic of the
+fitting itself comes after; what matters here is the order, and what each stage is allowed
+to hand on.
+
+\subsection{Two equations, and which is which}
+
+There are two recovery equations in play and they are not the same equation. Confusing them
+is the easiest mistake to make with this project, so they are set out before anything else.
+
+The first is the one asked about:
+
+\begin{equation}
+\label{eq:real-units}
+\text{recovery \%} \;=\; 33.0192 + 3.16999\,J - 14.4538\,R - 0.0954576\,J^{2}
++ 0.837907\,R^{2}
+\end{equation}
+
+Here $J$ is current density in $\mathrm{mA/cm^2}$ and $R$ is the feed ratio in
+$\mathrm{mol/mol}$, both in the units the bench reads them in. It is ordinary least squares
+over the nine GO-10 runs, with all five estimable terms forced in at once. \textbf{No part of
+this project prints equation~\ref{eq:real-units}.} It is a fit made by hand from the nine
+rows the analyzer produces, to answer the question ``what do the raw numbers say if you fit
+everything''.
+
+The second is what \texttt{uv run limodel analyze} actually prints:
+
+\begin{equation}
+\label{eq:coded}
+\text{recovery \%} \;=\; 11.5776 - 15.627\,x_2 + 6.08016\,x_2^{2},
+\qquad
+x_2 = \frac{\ln R - 1.395778}{1.039721}
+\end{equation}
+
+Three differences, all of them deliberate and all of them in the code:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Logged, coded units.} \texttt{DesignPoints} takes the natural log of each
+        setting, then centres and scales it so the runs span $-1$ to $+1$. Equation~\ref{eq:coded}
+        is in $x_2$, not $R$.
+  \item \textbf{Fewer terms.} \texttt{FittedOutcome} does not fit all five. It grows the model
+        one term at a time, keeping a term only if it lowers the leave-one-out error. It kept
+        two, and current density never got in at all.
+  \item \textbf{No $J$ at all.} Equation~\ref{eq:real-units} has $J$ and $J^2$ with
+        coefficients; equation~\ref{eq:coded} has neither, because adding $x_1$ made the
+        out-of-sample error worse.
+\end{enumerate}
+
+Wherever this report says ``the code's equation'' it means equation~\ref{eq:coded}, and
+``the five-term fit'' means equation~\ref{eq:real-units}.
+
+\subsection{The whole pipeline}
+
+Figure~\ref{fig:pipeline} is the shape of the program. \texttt{Analyzer.analyze} is three
+lines long and those three lines are the whole order: preprocess, calculate, fit.
+
+Two things are worth noticing in the chart. First, the data changes kind twice. The CSV rows
+become \texttt{Run} objects at the loader and stay \texttt{Run} objects through the whole of
+preprocessing; they become \texttt{Result} objects at the calculator and are never readings
+again. Nothing downstream of \texttt{Calculator} can see a tank weight.
+
+Second, the \texttt{Journal} sits to the side and every stage writes into it. It is one
+record, made empty, handed to the \texttt{Analyzer}, and handed on down. Nothing in it
+prints as it is written; the \texttt{Analyze} command reads the whole of it at the end. That
+is why the report can open with everything that was left out before it shows a single result.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm,
+  stage/.style={draw, rounded corners, align=center, font=\small, text width=6.4cm,
+                inner sep=4pt, minimum height=7.5mm},
+  payload/.style={draw, align=center, font=\small, text width=6.4cm,
+                  inner sep=4pt, minimum height=7.5mm},
+  record/.style={draw, rounded corners, align=center, font=\small, text width=3.2cm,
+                 inner sep=5pt},
+  flow/.style={-Stealth, thick},
+  note/.style={-Stealth, dashed, semithick}
+]
+
+\node[payload] (csv)
+  {four CSV files in \texttt{data/}\\[1pt]
+   \footnotesize \texttt{runs}, \texttt{stack\_readings}, \texttt{tank\_readings},
+   \texttt{samples}};
+
+\node[stage, below=of csv] (loader)
+  {\texttt{DataLoader} on \texttt{CsvSource}\\[1pt]
+   \footnotesize one pandera schema per table; a blank cell becomes \texttt{None}};
+
+\node[payload, below=of loader] (runs)
+  {21 \texttt{Run} objects\\[1pt]
+   \footnotesize each holding \texttt{TankReading}s (with their \texttt{Sample}),
+   \texttt{StackReading}s};
+
+\node[stage, below=of runs] (prep)
+  {\texttt{Preprocessor}\\[1pt]
+   \footnotesize four \texttt{Step}s, in order (figure~\ref{fig:steps})};
+
+\node[payload, below=of prep] (kept)
+  {9 \texttt{Run} objects kept, some values cleared};
+
+\node[stage, below=of kept] (calc)
+  {\texttt{Calculator}\\[1pt]
+   \footnotesize weights, lab results and the power log become quantities};
+
+\node[payload, below=of calc] (results)
+  {9 \texttt{Result} objects\\[1pt]
+   \footnotesize two settings, two outcomes, five diagnostics};
+
+\node[stage, below=of results] (surr)
+  {\texttt{Surrogate}\\[1pt]
+   \footnotesize per membrane: \texttt{DesignPoints}, \texttt{FittedOutcome},
+   \texttt{BestSetupUnderTheGates}};
+
+\node[payload, below=of surr] (models)
+  {\texttt{SurrogateModels}\\[1pt]
+   \footnotesize fitted equations, the gated search, the membranes refused};
+
+\node[stage, below=of models] (cmd)
+  {\texttt{Analyze} command\\[1pt]
+   \footnotesize prints the journal, the run table, then the fits};
+
+\foreach \a/\b in {csv/loader, loader/runs, runs/prep, prep/kept, kept/calc,
+                   calc/results, results/surr, surr/models, models/cmd}
+  \draw[flow] (\a) -- (\b);
+
+\node[record] at ($(prep.east)+(4.3,-0.6)$) (journal)
+  {\texttt{Journal}\\[2pt]
+   \footnotesize one \texttt{Entry} per thing left out: \texttt{DROP} for a whole run,
+   \texttt{SKIP} for one value, each with its id and its reason};
+
+\draw[note] (prep.east) -- (journal.west);
+\draw[note] (calc.east) -- (journal.west);
+\draw[note] (journal.south) |- (cmd.east)
+  node[pos=0.28, right, font=\footnotesize, align=left] {read at\\the end};
+
+\end{tikzpicture}
+\caption{The pipeline, from four CSV files to a printed equation. Solid arrows carry the
+data; the dashed arrows into the journal are writes, and the one dashed arrow out of it is
+the command reading the whole record at the end. Rounded boxes do work, square boxes are
+what they hand on. The order is
+\texttt{Analyzer.analyze}.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{The four preprocessing steps}
+
+\texttt{Preprocessor} holds the four steps as a tuple and runs each on what the one before
+returned. Figure~\ref{fig:steps} shows them with the counts on the real data.
+
+The order is a decision. Dropping by membrane comes second so that the reading checks never
+spend effort on a run the modelling throws away anyway. Dropping runs the lab cannot answer
+for comes \emph{last}, after the checks, so that a run on its way out is still looked over
+and its bad readings still get written down: the journal is a record of the whole dataset,
+not only of the part that survived.
+
+Two steps drop whole runs and refuse to return nothing: if every run fails,
+\texttt{DropExcludedRuns} and \texttt{DropRunsOnAnotherMembrane} both raise rather than hand
+on an empty list, because modelling nothing in silence would hide a misspelled membrane
+name.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  node distance=7mm,
+  stepbox/.style={draw, rounded corners, align=left, font=\small, text width=10.4cm,
+               inner sep=5pt},
+  tally/.style={font=\small},
+  flow/.style={-Stealth, thick}
+]
+
+\node[tally] (in) {21 \texttt{Run} objects loaded};
+
+\node[stepbox, below=of in] (s1)
+  {\textbf{1. \texttt{DropExcludedRuns}} \hfill \emph{drops 0}\\[1pt]
+   \footnotesize removes any run not marked \texttt{include} at the bench};
+
+\node[stepbox, below=of s1] (s2)
+  {\textbf{2. \texttt{DropRunsOnAnotherMembrane}} \hfill \emph{drops 11}\\[1pt]
+   \footnotesize removes any run whose \texttt{cem} is not in
+   \texttt{MEMBRANES\_MODELLED} (here \texttt{GO-10})};
+
+\node[stepbox, below=of s2] (s3)
+  {\textbf{3. \texttt{SkipSuspectReadings}} \hfill \emph{drops 0, clears 10 values}\\[1pt]
+   \footnotesize removes no run; sets to \texttt{None} each single value a check cannot
+   believe (figure~\ref{fig:inspectors})};
+
+\node[stepbox, below=of s3] (s4)
+  {\textbf{4. \texttt{DropRunsMissingAnEndSample}} \hfill \emph{drops 1 (AW)}\\[1pt]
+   \footnotesize removes any run without both metals, in both the concentrate and the
+   dilute, at its first and last sampled minute};
+
+\node[tally, below=of s4] (out) {9 \texttt{Run} objects handed to the \texttt{Calculator}};
+
+\foreach \a/\b/\l in {in/s1/{21 in}, s1/s2/{21 in}, s2/s3/{10 in}, s3/s4/{10 in},
+                      s4/out/{9 out}}
+  \draw[flow] (\a) -- (\b) node[midway, right, font=\footnotesize] {\l};
+
+\end{tikzpicture}
+\caption{The four preprocessing steps and what each one removes, with the counts from
+\texttt{uv run limodel analyze} on the current data. Step 3 is the only one that changes a
+run without removing it.}
+\label{fig:steps}
+\end{figure}
+
+\subsection{Inside one step}
+
+Figure~\ref{fig:inspectors} opens step~3, the only step that reaches inside a run. It is
+three levels deep and each level has one job. \texttt{SkipSuspectReadings} chooses the
+inspectors. An inspector chooses which readings it looks at and which checks they get: six
+check classes, configured into 21 checks per run. A check decides, and decides nothing else:
+it is handed the readings and answers with the one worst offender, the field to clear, and a
+sentence saying why.
+
+The clearing happens in exactly one place, \texttt{Inspector.\_clear\_what\_it\_rejects},
+and in exactly this order: write to the journal, then set the attribute to \texttt{None}.
+Nothing else in the codebase clears a reading. That loop also asks each check again after
+every value it clears, because a median is a better median once a bad value has left it, and
+it stops after a third of a series has gone: past half, a median starts following the bad
+values and the check would begin clearing the readings that were right.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  scale=1, transform shape,
+  insp/.style={draw, rounded corners, align=center, font=\footnotesize, text width=2.9cm,
+              inner sep=4pt},
+  wide/.style={draw, rounded corners, align=center, font=\small, text width=7.5cm,
+               inner sep=5pt},
+  leaf/.style={draw, rounded corners, align=left, font=\footnotesize, text width=6.1cm,
+               inner sep=4pt},
+  flow/.style={-Stealth, semithick}
+]
+
+\node[wide] (step) at (0,0)
+  {\texttt{SkipSuspectReadings}\\[1pt]
+   \footnotesize every run $\times$ every inspector};
+
+\node[insp] (conc) at (-5.55,-1.9) {\texttt{ConcTank}\\\texttt{Inspector}\\[1pt] tank
+  \texttt{conc}};
+\node[insp] (dil)  at (-2.35,-1.9) {\texttt{DiluteTank}\\\texttt{Inspector}\\[1pt] tank
+  \texttt{dil}};
+\node[insp] (rin)  at ( 0.85,-1.9) {\texttt{RinseTank}\\\texttt{Inspector}\\[1pt] tank
+  \texttt{rinse}};
+\node[insp] (pow)  at ( 4.55,-1.9) {\texttt{PowerLog}\\\texttt{Inspector}\\[1pt] the
+  \texttt{StackReading}s};
+
+\foreach \b in {conc, dil, rin, pow} \draw[flow] (step) -- (\b);
+
+\node[leaf] (tankchecks) at (-3.6,-4.7)
+  {six checks, built once in \texttt{TankInspector}:\\[2pt]
+   \texttt{ValueFarFromTheMedian} (weight)\\
+   \texttt{ValueOutsideTheRange} (pH, temperature)\\
+   \texttt{ValueMovingTooFast} (pH, temperature)\\
+   \texttt{JumpThatComesBack} (conductivity)};
+
+\node[leaf] (powchecks) at (4.3,-4.4)
+  {three checks:\\[2pt]
+   \texttt{ValueFarFromTheMedian} (current)\\
+   \texttt{PairedValuesTooFarApart} (voltage)\\
+   \texttt{PairedValuesOutOfProportion}\\(current)};
+
+\foreach \b in {conc, dil, rin} \draw[flow] (\b) -- (tankchecks);
+\draw[flow] (pow) -- (powchecks);
+
+\node[wide] (clear) at (0,-7.9)
+  {\texttt{Inspector.\_clear\_what\_it\_rejects}\\[2pt]
+   \footnotesize \texttt{journal.skip(reading, field, reason)}\quad then\quad
+   \texttt{setattr(reading, field, None)}\\[1pt]
+   \footnotesize ask the check again; stop at a third of the series};
+
+\draw[flow] (tankchecks) -- (clear);
+\draw[flow] (powchecks) -- (clear);
+
+\end{tikzpicture}
+\caption{Inside \texttt{SkipSuspectReadings}. The three tank inspectors differ only in which
+tank they read; their checks are built once in the shared \texttt{TankInspector}. Every
+threshold the checks compare against lives in \texttt{Thresholds}, and a value is cleared in
+one place only.}
+\label{fig:inspectors}
+\end{figure}
+
+\subsection{What each stage is responsible for}
+
+\textbf{\texttt{DataLoader}} is the only part of the program that knows where the data lives.
+It reads four tables, validates each against a pandera schema, groups the readings by run,
+attaches each lab sample to the tank reading drawn at that minute, and hands back a list of
+\texttt{Run} objects. It turns every blank cell into \texttt{None}, because pandas calls a
+blank \texttt{NaN} and \texttt{NaN} would quietly survive arithmetic. Which source it uses
+comes from \texttt{config.DATA\_SOURCE}, so moving the data out of CSV files is a
+configuration change.
+
+\textbf{\texttt{Preprocessor}} decides which runs the modelling may see and which individual
+values it may trust. It saves nothing and prints nothing: it returns the surviving runs and
+writes what it removed to the journal. It hands on \texttt{Run} objects of exactly the same
+type it was given, which is what lets the steps chain.
+
+\textbf{\texttt{Calculator}} is where the readings stop being readings. For each run it
+works out the two settings, the two outcomes, and five diagnostics, and packs them into a
+frozen \texttt{Result}. Nothing in a \texttt{Result} is copied from a CSV file; every field
+was worked out. It drops a run only when one of the two fitted outcomes could not be had,
+because a run with no permselectivity and no recovery has nothing to contribute. A missing
+diagnostic is not a reason to drop: the command names those runs at the end instead.
+
+\textbf{\texttt{Surrogate}} groups the results by membrane and, for each membrane with at
+least three runs, fits all three outcomes and then searches. The fitting is delegated:
+\texttt{DesignPoints} logs and codes the settings, \texttt{SecondOrderPolynomial} does the
+least squares, \texttt{LeaveOneOutError} scores it, \texttt{ReplicateScatter} works out what
+the bench's own repeats cost, and \texttt{FittedOutcome} holds all of it together. It writes
+nothing to the journal: a membrane it will not fit is reported on its answer, with the
+reason, because a membrane left out names the next experiment worth running.
+
+On the current data this is where equation~\ref{eq:coded} is chosen. \texttt{FittedOutcome}
+starts with an intercept alone and adds whichever single term lowers the leave-one-out error
+most, stopping when nothing lowers it:
+
+\begin{center}
+\begin{tabular}{llrl}
+\toprule
+model so far & term offered & leave-one-out rmse & \\
+\midrule
+intercept                 & ---       & 15.0521 & the starting point \\
+intercept                 & $x_1$     & 16.2443 & worse \\
+intercept                 & $x_2$     & \textbf{7.8979} & best of the two, so $x_2$ is kept \\
+intercept, $x_2$          & $x_1$     & 9.9497 & worse \\
+intercept, $x_2$          & $x_2^2$   & \textbf{7.1218} & better, so $x_2^2$ is kept \\
+intercept, $x_2$, $x_2^2$ & $x_1$     & 9.4710 & worse than 7.1218, so the model stops \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A squared term may only be offered once its own linear term is already in, since a curve
+without its slope cannot be read. That is why $x_1^2$ never appears: $x_1$ never got in.
+
+\textbf{\texttt{BestSetupUnderTheGates}} sweeps a $21 \times 21$ grid of coded points, keeps
+those predicted to clear a recovery floor of $35\%$ and a voltage ceiling of
+$20\unit{V}$, and returns the survivor with the highest predicted permselectivity. It sweeps
+only inside the measured range, so the answer is always a setup the bench has evidence for.
+On this data all 441 points fail the recovery floor and none fails the voltage ceiling: the
+highest recovery the fit predicts anywhere in range is $33.28\%$. Nothing surviving is
+reported as a finding with the blamed gate named, not as an error.
+
+\textbf{\texttt{Analyze}} prints. The exclusions come first on purpose, so a reader who sees
+the answer already knows how many runs it came from. Beside each equation it prints the
+fit's leave-one-out error next to the bench scatter, and says outright when the error is
+worse. For recovery it is: off by $7.122$ against a bench scatter of $6.612$ from two
+repeats. The line the command adds is that this is worse than the bench repeating itself,
+\emph{so this fit has earned no conclusion}.
+
+\subsection{The one rule: a value that cannot be worked out becomes \texttt{None}}
+
+One rule holds from the loader to the search, and it is the reason the code reads the way it
+does. \textbf{A value that cannot be worked out becomes \texttt{None}, and is never guessed
+at.} There is no imputation anywhere, no filling forward, no substituting a mean, no
+treating a blank as zero.
+
+It shows up at every level:
+
+\begin{itemize}[nosep]
+  \item the loader turns a blank cell into \texttt{None}, never $0$ --- a blank means
+        \emph{not measured};
+  \item a check clears a value it cannot believe, and \texttt{find\_judgeable\_readings}
+        then passes over it, so a cleared value is absent rather than wrong;
+  \item every quantity returns \texttt{None} rather than a partial answer:
+        \texttt{VolumeInATank} with no weight, \texttt{FeedRatio} with no magnesium,
+        \texttt{DesignPoints} on a setting at or below zero, which has no logarithm;
+  \item \texttt{SecondOrderPolynomial.find\_fit} returns \texttt{None} when the design
+        matrix comes back rank-deficient, because two terms moving together over these rows
+        means no one set of coefficients is \emph{the} answer;
+  \item \texttt{find\_prediction} returns \texttt{None} on an unfitted polynomial, and
+        \texttt{BestSetupUnderTheGates} treats a point it cannot predict as a point it
+        cannot judge rather than a point that passes.
+\end{itemize}
+
+The cost of the rule is that every caller has to check. The benefit is that no number in the
+printed report was invented, and a gap in the bench record stays a gap all the way to the
+page. The journal is the other half of the same rule: nothing is dropped or cleared without
+a line saying what and why.
+
+\subsection{The stages at a glance}
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.1cm}>{\raggedright\arraybackslash}p{3.7cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{5.0cm}@{}}
+\toprule
+stage & the class that does it & takes in & hands on \\
+\midrule
+load &
+  \texttt{DataLoader}, \texttt{CsvSource}, pandera schemas &
+  four CSV files &
+  21 \texttt{Run} objects, readings and samples attached \\
+\addlinespace
+preprocess &
+  \texttt{Preprocessor} and its four \texttt{Step}s &
+  21 \texttt{Run} objects &
+  9 \texttt{Run} objects, 10 values cleared; drops and skips in the journal \\
+\addlinespace
+check a reading &
+  \texttt{SkipSuspectReadings}, four \texttt{Inspector}s, six \texttt{Check} classes,
+  \texttt{Thresholds} &
+  one run's readings &
+  the same readings, with unbelievable values set to \texttt{None} \\
+\addlinespace
+calculate &
+  \texttt{Calculator} and the \texttt{quantities} package &
+  9 \texttt{Run} objects &
+  9 frozen \texttt{Result}s: two settings, two outcomes, five diagnostics \\
+\addlinespace
+code the settings &
+  \texttt{DesignPoints} &
+  the settings of each \texttt{Result} &
+  one $(x_1, x_2)$ per run, logged, centred and scaled to $-1..1$, and the way back \\
+\addlinespace
+fit &
+  \texttt{FittedOutcome}, \texttt{SecondOrderPolynomial}, \texttt{LeaveOneOutError},
+  \texttt{ReplicateScatter} &
+  coded rows and one outcome column &
+  the terms that earned their place, their coefficients, the error, the bench scatter \\
+\addlinespace
+search &
+  \texttt{BestSetupUnderTheGates} &
+  three fitted outcomes and the design &
+  the best setup in $\mathrm{mA/cm^2}$ and $\mathrm{mol/mol}$, or the gate that refused
+  every point \\
+\addlinespace
+assemble &
+  \texttt{Surrogate}, \texttt{SurrogateModels}, \texttt{Analysis} &
+  9 \texttt{Result}s &
+  fits and best setups per membrane, plus the membranes not fitted and why \\
+\addlinespace
+report &
+  \texttt{Analyze} &
+  the \texttt{Analysis} and the \texttt{Journal} &
+  printed lines: exclusions, the run table, the fits, the thin runs \\
+\bottomrule
+\end{tabular}
+\end{center}

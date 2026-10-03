@@ -1,0 +1,55 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+% headings: bold, barely larger than the text, well spaced
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.5em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+
+% long class and method names in \texttt cannot be hyphenated; let TeX loosen a
+% line rather than push it into the margin
+\setlength{\emergencystretch}{3em}
+
+\begin{document}
+
+\begin{center}
+  {\large\bfseries A guide to the analyzer}\\[0.35em]
+  {\normalsize How the code turns the bench readings into results}\\[0.9em]
+  {\small Suresh Hemal \quad\textbullet\quad 2 October 2026}
+\end{center}
+\vspace{0.4em}
+\hrule
+\vspace{1.2em}
+
+\tableofcontents
+\vspace{1.2em}
+
+This document describes exactly what the analyzer does to the numbers, stage by stage, so that
+any figure the report prints can be checked by hand. It names the real classes and methods, so
+each description can be read against the source beside it, and it says why each choice was made
+wherever a choice was made --- which readings are set aside and on what grounds, how every
+quantity is formed from the raw weights and lab concentrations, what one whole run looks like
+worked through from balance reading to permselectivity, how the polynomial is fitted and chosen,
+and what the present set of runs can and cannot be asked.
+
+\input{analyzer-guide/01-overview}
+\input{analyzer-guide/02-preprocessing}
+\input{analyzer-guide/03-quantities}
+\input{analyzer-guide/04-worked-example}
+\input{analyzer-guide/05-model}
+\input{analyzer-guide/06-limits}
+
+\end{document}

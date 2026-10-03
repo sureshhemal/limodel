@@ -1,0 +1,403 @@
+\section{Where the five numbers come from}
+
+\subsection{Two equations, and which is which}
+
+There are two polynomials in play, and they are not the same polynomial. Mixing them up
+is the easiest mistake to make here, so they are set side by side before anything else.
+
+The first is the one this section is about. It is an ordinary least squares fit to the nine
+GO-10 runs, with the two settings left in the units the bench works in --- current density
+$J$ in $\unit{mA/cm^2}$ and feed ratio $R$ in $\unit{mol/mol}$ --- and with all five
+estimable terms fitted at once:
+%
+\begin{equation}
+  \widehat{\text{recovery}}\,[\%] \;=\; 33.0192 \;+\; 3.16999\,J \;-\; 14.4538\,R
+  \;-\; 0.0954576\,J^{2} \;+\; 0.837907\,R^{2}
+  \label{eq:real-units-fit}
+\end{equation}
+
+The second is the one \texttt{uv run limodel analyze} prints. The code does not fit in real
+units and does not fit every term. It takes the logarithm of each setting, centres and scales
+it to run from $-1$ to $+1$ across the runs, and then grows the model one term at a time,
+keeping a term only while it lowers the leave-one-out error. For recovery it stops with three
+terms and prints
+%
+\begin{equation}
+  \widehat{\text{recovery}}\,[\%] \;=\; 11.5776 \;-\; 15.627\,x_2 \;+\; 6.08016\,x_2^{2},
+  \qquad x_2 = \frac{\ln R - 1.395778}{1.039721}
+  \label{eq:coded-fit}
+\end{equation}
+
+Equation~\eqref{eq:coded-fit} has no $J$ in it at all. Equation~\eqref{eq:real-units-fit} is
+not what the code reports; it is the plain, all-terms, real-units fit, written out so that
+every coefficient in it can be traced to arithmetic on nine rows of measurements. That is
+what the rest of this section does. Why the code works in logged, coded units and selects its
+terms is a separate matter and is not argued here.
+
+\subsection{The question least squares asks}
+
+Nine runs survived preprocessing, all on the GO-10 membrane. Each one is three numbers: the
+current density it was held at, the feed ratio it was fed, and the lithium recovery that came
+out of it.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The nine GO-10 runs the fit is made from.}
+  \label{tab:nine-runs}
+  \begin{tabular}{llrr}
+    \toprule
+    Run & $J$ ($\mathrm{mA/cm^2}$) & $R$ ($\mathrm{mol/mol}$) & Recovery (\%) \\
+    \midrule
+    AE & 13.6667 & 1.4277  & 38.27 \\
+    AF & 13.6667 & 2.8554  & 18.34 \\
+    AG & 13.6667 & 5.7108  & 6.16  \\
+    AH & 7.5000  & 1.4277  & 36.59 \\
+    AI & 7.5000  & 1.4277  & 37.66 \\
+    AJ & 4.5000  & 1.4277  & 21.08 \\
+    AN & 25.6667 & 1.4277  & 39.50 \\
+    AP & 25.6667 & 1.4277  & 26.32 \\
+    AT & 13.6667 & 11.4215 & 2.32  \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+We choose a shape for the answer first: a second order polynomial in the two settings. Then
+we ask for the five numbers $b_0,\dots,b_4$ that make the nine predicted recoveries as close
+as they can be to the nine measured ones. ``As close as they can be'' has to be made precise,
+because there is no single set of five numbers that hits all nine measurements. Least squares
+makes it precise in one particular way: add up the squares of the nine misses, and pick the
+five numbers that make that total as small as possible.
+%
+\begin{equation}
+  b \;=\; \arg\min_{b_0,\dots,b_4} \;\sum_{i=1}^{9}
+  \Bigl( y_i - \bigl[\, b_0 + b_1 J_i + b_2 R_i + b_3 J_i^{2} + b_4 R_i^{2} \,\bigr] \Bigr)^{2}
+  \label{eq:least-squares-question}
+\end{equation}
+
+Here $y_i$ is the recovery measured on run $i$. Squaring, rather than taking the size of the
+miss, is a choice, and it is worth knowing it was made: squaring makes a miss of $6$ count
+four times a miss of $3$, so the answer is pulled hard towards the runs it would otherwise
+fit worst. It also makes the problem solvable in closed form, which is the next subsection.
+
+\subsection{The design matrix}
+
+Equation~\eqref{eq:least-squares-question} is tidier in matrix form. Put the nine measured
+recoveries in a column $y$, and build a matrix $X$ with one row per run and one column per
+term. Each column is a rule applied to that run's own $J$ and $R$:
+
+\begin{itemize}[nosep]
+  \item column 1 is the constant $1$, the same for every run --- this is what $b_0$ multiplies;
+  \item column 2 is $J$, the run's current density, as recorded;
+  \item column 3 is $R$, the run's feed ratio, as recorded;
+  \item column 4 is $J^2$, that same current density times itself;
+  \item column 5 is $R^2$, that same feed ratio times itself.
+\end{itemize}
+
+Nothing is standardised, logged or re-centred. The numbers in $X$ are the bench's numbers and
+their squares, which is exactly why the coefficients in \eqref{eq:real-units-fit} carry real
+units.
+
+{\footnotesize
+\setlength{\arraycolsep}{4pt}
+\begin{equation}
+  X \;=\;
+  \begin{array}{r}
+    \text{AE}\\ \text{AF}\\ \text{AG}\\ \text{AH}\\ \text{AI}\\
+    \text{AJ}\\ \text{AN}\\ \text{AP}\\ \text{AT}
+  \end{array}\!\!
+  \begin{bmatrix}
+    1 & 13.6667 & 1.4277  & 186.7778 & 2.0383   \\
+    1 & 13.6667 & 2.8554  & 186.7778 & 8.1532   \\
+    1 & 13.6667 & 5.7108  & 186.7778 & 32.6128  \\
+    1 & 7.5000  & 1.4277  & 56.2500  & 2.0383   \\
+    1 & 7.5000  & 1.4277  & 56.2500  & 2.0383   \\
+    1 & 4.5000  & 1.4277  & 20.2500  & 2.0383   \\
+    1 & 25.6667 & 1.4277  & 658.7778 & 2.0383   \\
+    1 & 25.6667 & 1.4277  & 658.7778 & 2.0383   \\
+    1 & 13.6667 & 11.4215 & 186.7778 & 130.4511
+  \end{bmatrix},
+  \qquad
+  y \;=\;
+  \begin{bmatrix}
+    38.27 \\ 18.34 \\ 6.16 \\ 36.59 \\ 37.66 \\ 21.08 \\ 39.50 \\ 26.32 \\ 2.32
+  \end{bmatrix}
+  \label{eq:design-matrix}
+\end{equation}
+}
+
+Two features of this matrix decide everything that follows. Rows AH and AI are identical, and
+so are rows AN and AP: those are repeats, two runs at the same setting. Identical rows must
+get identical predictions, whatever the five numbers turn out to be. And the right-hand column
+is nearly all the same value: six of the nine runs sat at $R = 1.4277$, so the feed ratio was
+only ever moved at one current density.
+
+\subsection{Why five columns and not six}
+
+A full second order model in two settings has six terms, the sixth being the interaction
+$J\cdot R$. It is left out of $X$ because over these nine runs it cannot be fitted at all --
+not because it was judged unimportant.
+
+The runs move current density only at the lowest feed ratio, and move feed ratio only at one
+current density. That cross shape makes the product column an exact combination of three
+columns already present:
+%
+\begin{equation}
+  J_i R_i \;=\; 1.42769\,J_i \;+\; 13.66667\,R_i \;-\; 19.51176
+  \qquad \text{for all nine runs}
+  \label{eq:interaction-identity}
+\end{equation}
+
+This is not approximately true, it is true: the largest discrepancy across the nine rows is
+$7.1\times10^{-15}$, which is floating point noise and nothing else. Add $J\cdot R$ as a sixth
+column and the matrix has rank 5, not 6. Six unknowns, five independent pieces of information:
+infinitely many different sets of six coefficients would fit the nine runs equally well, so
+there is no answer to report. The code meets the same wall and handles it by refusing the
+fit --- \texttt{SecondOrderPolynomial.find\_fit} checks the rank \texttt{numpy} hands back and
+returns \texttt{None} when it falls short of the number of terms.
+
+\subsection{The normal equations}
+
+Minimising a sum of squares is a calculus problem. Write the total squared miss as
+$S(b) = (y - Xb)^{\mathsf T}(y - Xb)$ and differentiate it with respect to each of the five
+coefficients in turn. At the minimum every one of those five derivatives is zero, which gives
+five equations in the five unknowns:
+%
+\begin{equation}
+  \frac{\partial S}{\partial b} \;=\; -2X^{\mathsf T}(y - Xb) \;=\; 0
+  \qquad\Longrightarrow\qquad
+  \bigl(X^{\mathsf T}X\bigr)\,b \;=\; X^{\mathsf T}y
+  \label{eq:normal-equations}
+\end{equation}
+
+These are the normal equations. The name comes from what they say: the vector of misses
+$y - Xb$ is at right angles --- normal --- to every column of $X$. That has a plain reading.
+If the leftover misses still leaned one way with $J$, you could lower the total by adjusting
+$b_1$, so you were not at the minimum. At the minimum there is no leaning left to exploit.
+
+Both sides are small, and both are made of nothing but sums of products of the numbers in
+\eqref{eq:design-matrix}. The top left entry of $X^{\mathsf T}X$ is $9$, the number of runs,
+because it is the first column dotted with itself. The second entry of the top row is
+$125.5$, which is the nine current densities added up.
+
+{\footnotesize
+\setlength{\arraycolsep}{4pt}
+\begin{equation}
+  X^{\mathsf T}X =
+  \begin{bmatrix}
+    9        & 125.5      & 28.5538   & 2197.4167    & 183.4468   \\
+    125.5    & 2197.4167  & 393.8044  & 44962.6528   & 2512.2024  \\
+    28.5538  & 393.8044   & 183.4468  & 6070.4973    & 1716.9338  \\
+    2197.4167& 44962.6528 & 6070.4973 & 1014258.2616 & 35316.4021 \\
+    183.4468 & 2512.2024  & 1716.9338 & 35316.4021   & 18172.4790
+  \end{bmatrix},
+  \qquad
+  X^{\mathsf T}y =
+  \begin{bmatrix}
+    226.2459 \\ 3230.6772 \\ 398.8249 \\ 60119.2880 \\ 1060.2725
+  \end{bmatrix}
+  \label{eq:normal-matrices}
+\end{equation}
+}
+
+Note how wide the range of magnitudes is: $9$ in one corner and $1{,}014{,}258$ in another.
+That is what squaring a current density of $25.67$ twice over does, and it matters in the next
+subsection.
+
+\subsection{Solving them}
+
+Solving \eqref{eq:normal-equations} with those numbers gives the five coefficients:
+%
+\begin{equation}
+  b \;=\;
+  \begin{bmatrix} b_0 \\ b_1 \\ b_2 \\ b_3 \\ b_4 \end{bmatrix}
+  \;=\;
+  \begin{bmatrix}
+    33.019212 \\ 3.169987 \\ -14.453829 \\ -0.0954576 \\ 0.837907
+  \end{bmatrix}
+  \label{eq:coefficients}
+\end{equation}
+
+which is equation~\eqref{eq:real-units-fit}, written out. That is the whole answer to ``how
+those numbers'': they are what you get when you form the two arrays in
+\eqref{eq:normal-matrices} out of nine rows of bench data and solve a five by five linear
+system.
+
+A solver does not take that route. \texttt{SecondOrderPolynomial.\allowbreak find\_fit}
+calls \texttt{numpy.\allowbreak linalg.\allowbreak lstsq}, which asks the same question ---
+it is still \eqref{eq:least-squares-question} --- but answers it by singular value
+decomposition of $X$ itself, without ever forming $X^{\mathsf T}X$. Hand the five real-unit
+columns of \eqref{eq:design-matrix} to either route and they agree to
+$1.07\times10^{-12}$, so for reading the coefficients it makes no difference which is used.
+(The code is never handed those columns: \texttt{find\_fit} only ever sees the logged, coded
+columns of \eqref{eq:coded-fit}. What is shared is the solver, not the fit.)
+
+A solver prefers the decomposition route because forming $X^{\mathsf T}X$ squares the
+condition number, the measure of how much a solution can move when the inputs are nudged.
+For this $X$ the condition number is $1770$; for $X^{\mathsf T}X$ it is
+$3.13\times10^{6}$. Multiplying the matrix by its own transpose throws away about half the
+available precision before the solving even starts, for no gain.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+      box/.style={draw, rounded corners, align=center, inner sep=6pt, text width=7.4cm},
+      lab/.style={font=\footnotesize, align=left, xshift=2pt}
+    ]
+    \node[box] (runs)
+      {\textbf{Nine GO-10 runs}\\[2pt]
+       each one a current density $J$, a feed ratio $R$\\ and one measured recovery};
+    \node[box, below=0.95cm of runs] (design)
+      {\textbf{Build the design matrix}\\[2pt]
+       one row per run; columns $1,\;J,\;R,\;J^{2},\;R^{2}$\\
+       (no $J\!\cdot\!R$: it is not independent here)};
+    \node[box, below=0.95cm of design] (normal)
+      {\textbf{Form the normal equations}\\[2pt]
+       $\bigl(X^{\mathsf T}X\bigr)\,b = X^{\mathsf T}y$};
+    \node[box, below=0.95cm of normal] (solve)
+      {\textbf{Solve the $5\times5$ system}\\[2pt]
+       by hand, or by any linear solver};
+    \node[box, right=0.9cm of normal, text width=4.5cm] (svd)
+      {\textbf{Or: skip $X^{\mathsf T}X$}\\[2pt]
+       \texttt{numpy.linalg.lstsq},\\ by singular value\\ decomposition of $X$ itself};
+    \node[box, below=0.95cm of solve] (out)
+      {\textbf{Five coefficients}\\[2pt]
+       $33.0192,\;3.16999,\;-14.4538,$\\ $-0.0954576,\;0.837907$};
+
+    \draw[-Stealth] (runs)   -- node[right, lab] {$9 \times 3$ measurements} (design);
+    \draw[-Stealth] (design) --
+      node[right, lab] {$X$ is $9 \times 5$, \; $y$ is $9 \times 1$} (normal);
+    \draw[-Stealth] (normal) --
+      node[right, lab] {$X^{\mathsf T}X$ is $5 \times 5$, \; $X^{\mathsf T}y$ is $5 \times 1$}
+      (solve);
+    \draw[-Stealth] (solve) -- node[right, lab] {$b$ is $5 \times 1$} (out);
+    \draw[-Stealth, dashed] (design.east) -| (svd.north);
+    \draw[-Stealth, dashed] (svd.south) |-
+      node[pos=0.86, below, lab, align=center, yshift=-1pt]
+        {same $b$, to\\ $1.07\times10^{-12}$} (out.east);
+  \end{tikzpicture}
+  \caption{From nine runs to five coefficients. The solid path is the one this section
+    works through: the shapes on its arrows are where the nine runs stop being nine things,
+    since once $X^{\mathsf T}X$ and $X^{\mathsf T}y$ are formed the problem is five by five
+    no matter how many runs went in. The dashed path is what a solver actually does --- the
+    same least squares question, decomposing $X$ directly and never forming
+    $X^{\mathsf T}X$. Both land on the same five numbers. Neither is the equation
+    \texttt{uv run limodel analyze} prints: that one is fitted on the coded columns of
+    \eqref{eq:coded-fit}.}
+  \label{fig:least-squares-flow}
+\end{figure}
+
+\subsection{What the answer means run by run}
+
+Put each run's $J$ and $R$ back into \eqref{eq:real-units-fit} and you get what the equation
+thinks that run should have given. The difference is the residual.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Measured, fitted and residual recovery for all nine runs, with each run's
+    leverage --- how much of its own fitted value the run itself dictates.}
+  \label{tab:fitted-and-residuals}
+  \begin{tabular}{lrrrr}
+    \toprule
+    Run & Measured (\%) & Fitted (\%) & Residual (\%) & Leverage \\
+    \midrule
+    AE & 38.27 & 39.59 & $-1.31$ & 0.644 \\
+    AF & 18.34 & 24.07 & $-5.73$ & 0.337 \\
+    AG & 6.16  & 3.30  & $+2.86$ & 0.834 \\
+    AH & 36.59 & 32.50 & $+4.09$ & 0.258 \\
+    AI & 37.66 & 32.50 & $+5.16$ & 0.258 \\
+    AJ & 21.08 & 26.42 & $-5.34$ & 0.677 \\
+    AN & 39.50 & 32.57 & $+6.93$ & 0.499 \\
+    AP & 26.32 & 32.57 & $-6.25$ & 0.499 \\
+    AT & 2.32  & 2.73  & $-0.41$ & 0.997 \\
+    \midrule
+    \multicolumn{3}{l}{Sum of squared residuals} & \multicolumn{2}{r}{$201.9127$} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+$201.9127$ is the smallest that total can be made with five numbers of this shape. Any other
+five numbers give a larger total; that is what \eqref{eq:least-squares-question} asked for and
+what \eqref{eq:coefficients} delivers.
+
+The residuals are not scattered at random, and the leverage column says why. Leverage is the
+share of its own fitted value that a run dictates; the nine leverages add to $5$, one for each
+coefficient, so they are literally how the five coefficients are spent across the nine runs.
+
+Run AT, the single run at $R = 11.4215$, has leverage $0.997$. It is almost the only evidence
+the $R^2$ column has at the far end of the feed ratio range, so the surface bends through it,
+and its residual is $-0.41$. AG, the only run at $R = 5.7108$, is the next most influential at
+$0.834$ and is fitted to $+2.86$. In other words, where the design has one run and no second
+opinion, the fit passes close to it almost by obligation, not because the physics was captured.
+
+The big residuals sit at the opposite end. Rows AH and AI of $X$ are the same row, so both get
+the same prediction, $32.50$; rows AN and AP are the same row, so both get $32.57$. But the
+bench measured $36.59$ and $37.66$ at the first setting and $39.50$ and $26.32$ at the second.
+The fit splits each pair down the middle and the disagreement between the repeats lands
+entirely in the residuals: $+4.09$, $+5.16$, $+6.93$, $-6.25$. No choice of five coefficients
+can remove those, because the four misses are the bench disagreeing with itself.
+
+One run does not follow the simple reading. AF is the only run at $R = 2.8554$ yet it has the
+\emph{lowest} leverage of the nine, $0.337$, and the second largest residual, $-5.73$. Being
+alone at a setting is not what buys influence; sitting at the edge of the range is. AF sits in
+the middle of the feed ratio range, where the quadratic in $R$ is already pinned down by the
+runs on either side of it, so the fit is free to miss it.
+
+Whether a total of $201.9127$ is small enough to believe is the next section's question.
+
+\subsection{Why the coefficients cannot be read one at a time}
+
+It is tempting to read $b_1 = +3.17$ as ``more current gives more recovery'' and
+$b_4 = +0.838$ as ``more magnesium in the feed gives more recovery''. Both readings are wrong,
+and they are wrong for the same reason: in a polynomial, a coefficient has no meaning on its
+own. $J$ and $J^2$ move together, always, so $b_1$ and $b_3$ only say something as a pair.
+
+Differentiate \eqref{eq:real-units-fit} with respect to $J$ and the pair speaks:
+%
+\begin{equation}
+  \frac{\partial\,\widehat{\text{recovery}}}{\partial J}
+  \;=\; 3.16999 \;-\; 2 \times 0.0954576\,J
+  \;=\; 0 \quad\text{at}\quad J = 16.60\unit{mA/cm^2}
+  \label{eq:j-turning-point}
+\end{equation}
+
+A positive $b_1$ with a negative $b_3$ is a hump, not a slope. The fitted surface rises with
+current density up to about $16.6\unit{mA/cm^2}$ and falls after it, and that turning point
+sits inside the range the runs covered, $4.5$ to $25.67$. The same pair of numbers read
+separately would have said the opposite things about the two halves of that curve.
+
+The feed ratio pair behaves the other way round. $b_2 = -14.45$ with $b_4 = +0.838$ turns at
+$R = 8.62\unit{mol/mol}$, so over most of the tested range the surface falls steeply with
+feed ratio and then flattens out as it approaches the highest run. The positive $b_4$ is not a
+benefit of magnesium; it is the flattening of a steep fall.
+
+The honest way to quote a fit like this is never a coefficient. It is a predicted recovery at
+a stated setting.
+
+\begin{table}[htbp]
+  \centering
+  \caption{What equation~\eqref{eq:real-units-fit} predicts at real settings. Reading down
+    the first block, current density has a best value rather than a direction; reading down
+    the second, feed ratio dominates everything.}
+  \label{tab:predictions-at-real-settings}
+  \begin{tabular}{rrr}
+    \toprule
+    $J$ ($\mathrm{mA/cm^2}$) & $R$ ($\mathrm{mol/mol}$) & Predicted recovery (\%) \\
+    \midrule
+    4.5000  & 1.4277 & 26.42 \\
+    7.5000  & 1.4277 & 32.50 \\
+    13.6667 & 1.4277 & 39.59 \\
+    16.6042 & 1.4277 & 40.41 \\
+    25.6667 & 1.4277 & 32.57 \\
+    \midrule
+    13.6667 & 2.8554  & 24.07 \\
+    13.6667 & 5.7108  & 3.30  \\
+    13.6667 & 11.4215 & 2.73  \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:predictions-at-real-settings} says something no single coefficient could. Over
+the whole tested span of current density the prediction moves by about
+14 percentage points, and it moves up and then back down. Over the tested span of feed ratio,
+at fixed current density, it moves by about 37 percentage points, all downward. The
+five numbers in \eqref{eq:coefficients} encode that, but only together.

@@ -10,7 +10,7 @@ A model for finding the best electrodialysis setup for separating lithium from m
 
 - **Maximise** permselectivity `P = (t_Li / t_Mg) / (c_Li / c_Mg)`
   - `t` is each ion's share of the charge carried: `t_Li = n_Li / (n_Li + 2·n_Mg)`, using moles gained by the concentrate
-  - `c` is the feed concentration at the start of the run (diluate, t = 0), in mol/m³
+  - `c` is the feed concentration at the start of the run (dilute, t = 0), in mol/m³
 - **Safety gate:** starting supply voltage ≤ 20 V (membranes break above it)
 - **Usefulness gate:** Li recovery at the end of the run ≥ 35% (provisional)
 

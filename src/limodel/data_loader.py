@@ -37,6 +37,10 @@ class DataLoader:
 
         return runs
 
+    def find_refused_rows(self):
+        """Every row the schema would not take, so the analyzer can write them down."""
+        return self._source.find_refused_rows()
+
     def raw_tables(self):
         """Every table as stored, unchecked, for the checks to report on.
 

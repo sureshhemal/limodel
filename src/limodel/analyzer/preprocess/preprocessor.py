@@ -3,6 +3,7 @@
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.steps.drop_excluded_runs import DropExcludedRuns
 from limodel.analyzer.preprocess.steps.drop_runs_missing_an_end_sample import DropRunsMissingAnEndSample
+from limodel.analyzer.preprocess.steps.drop_runs_on_another_membrane import DropRunsOnAnotherMembrane
 from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.models import Run
@@ -17,6 +18,8 @@ class Preprocessor:
 
     steps: tuple[Step, ...] = (
         DropExcludedRuns(),
+        # Second, so the checks below never spend effort on a run the modelling drops anyway.
+        DropRunsOnAnotherMembrane(),
         # if run is missing required field, that is already dropped by data loader from csv.
         # So, we'll not handle that issue in here anymore.
         SkipSuspectReadings(),

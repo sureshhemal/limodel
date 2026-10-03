@@ -58,4 +58,8 @@ class Journal:
 
         Reading them here rather than at the call site means the two can never disagree.
         """
-        self._entries.append(Entry(action, record.id, type(record).__name__, reason, field_name))
+        # A row refused at the door never becomes the record it would have been, so it says
+        # what kind it is itself. Everything else is named by its class.
+        model = getattr(record, "model", None) or type(record).__name__
+
+        self._entries.append(Entry(action, record.id, model, reason, field_name))
