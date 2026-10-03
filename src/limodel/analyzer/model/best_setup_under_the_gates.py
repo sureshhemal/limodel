@@ -1,6 +1,7 @@
 """The most selective setup that still clears the recovery floor and the voltage ceiling."""
 
 import itertools
+import math
 
 from limodel import config
 from limodel.analyzer.model.design_points import DesignPoints
@@ -23,6 +24,11 @@ class BestSetupUnderTheGates:
 
     STEPS = 21                  # levels per setting, a tenth of the coded span apart
 
+    # How close two predicted permselectivities may be and still count as the same. A fit that
+    # kept no term predicts one number everywhere to the last bit, so this only has to absorb
+    # floating-point dust.
+    TIE_TOLERANCE = 1e-9
+
     RECOVERY_GATE = "lithium recovery floor"
     VOLTAGE_GATE = "voltage ceiling"
 
@@ -44,10 +50,15 @@ class BestSetupUnderTheGates:
         return self.design_points.find_real_from_coded(self.find_best_point())
 
     def find_best_point(self):
-        """The surviving coded point with the most permselectivity; None when none survived."""
+        """The surviving coded point with the most permselectivity; None when none survived.
+
+        None as well when every survivor is predicted the same permselectivity: a fit that
+        kept no term says the same thing at every point, and taking the first of equals in
+        grid order would dress a tie up as a recommendation.
+        """
         survivors = self.find_survivors()
 
-        if not survivors:
+        if not survivors or self.find_the_points_tie(survivors):
             return None
 
         return max(survivors,
@@ -66,7 +77,9 @@ class BestSetupUnderTheGates:
         predictable = [point for point in self.find_coded_grid()
                        if self.find_predictions_at(point) is not None]
 
-        if not predictable:
+        # A tie here is the same tie as under the gates, and the closest of equals is as
+        # arbitrary as the best of them.
+        if not predictable or self.find_the_points_tie(predictable):
             return None
 
         return max(predictable,
@@ -102,6 +115,14 @@ class BestSetupUnderTheGates:
         if self.find_settings() is not None:
             return None
 
+        survivors = self.find_survivors()
+
+        if survivors and self.find_the_points_tie(survivors):
+            promised = self.find_predictions_at(survivors[0])[PERMSELECTIVITY]
+
+            return (f"every setup that clears both gates is predicted the same "
+                    f"permselectivity, {promised:.3f}, so there is no best one among them")
+
         if self.find_best_point() is not None:
             return "the runs do not cover enough ground to place a setup in real units"
 
@@ -111,6 +132,18 @@ class BestSetupUnderTheGates:
             return "no setup inside the measured range could be predicted"
 
         return f"nothing inside the measured range cleared the {' and the '.join(blamed)}"
+
+    def find_the_points_tie(self, points):
+        """True when these points are all predicted the same permselectivity.
+
+        The points have to be predictable, which every survivor is. Equal to the tolerance,
+        because a flat polynomial comes out identical everywhere and anything wider would
+        start calling a real, small difference a tie.
+        """
+        promised = [self.find_predictions_at(point)[PERMSELECTIVITY] for point in points]
+
+        return math.isclose(min(promised), max(promised),
+                            rel_tol=self.TIE_TOLERANCE, abs_tol=self.TIE_TOLERANCE)
 
     def find_rejections(self):
         """How many of the swept points each gate turned away."""

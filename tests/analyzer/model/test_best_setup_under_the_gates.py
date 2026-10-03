@@ -121,6 +121,51 @@ def test_it_counts_what_each_gate_turned_away(gates):
         "lithium recovery floor": 15 * 21 * 21, "voltage ceiling": 0}
 
 
+@pytest.fixture
+def flat(points, a_fit):
+    """Permselectivity 2 everywhere, with the same recovery and voltage lines as `gates`."""
+    def build(**configuration):
+        return BestSetupUnderTheGates(points,
+                                      a_fit("permselectivity", (2.0, 0.0, 0.0)),
+                                      a_fit("li_recovery_pct", (50.0, 10.0, 0.0)),
+                                      a_fit("highest_voltage_v", (12.0, 2.0, 0.0)),
+                                      **configuration)
+    return build
+
+
+def test_a_permselectivity_the_same_everywhere_has_no_best_setup(flat):
+    """Every surviving point promises 2, so taking the first of them would be a tie-break
+    dressed up as a recommendation."""
+    assert flat().find_best_point() is None
+    assert flat().find_settings() is None
+
+
+def test_the_tie_is_named_as_the_reason_there_is_no_best_setup(flat):
+    assert flat().find_refusal() == (
+        "every setup that clears both gates is predicted the same permselectivity, 2.000, "
+        "so there is no best one among them")
+
+
+def test_a_tie_leaves_no_closest_setup_to_show_either(flat):
+    """The closest of equals is as arbitrary as the best of them."""
+    assert flat(recovery_floor_pct=70.0).find_settings_without_the_gates() is None
+
+
+def test_a_gate_that_turned_everything_away_is_still_blamed_over_a_tie(flat):
+    """With nothing surviving there is no tie to speak of, so the gate is the reason."""
+    assert flat(recovery_floor_pct=70.0).find_refusal() == (
+        "nothing inside the measured range cleared the lithium recovery floor")
+
+
+def test_the_tie_rule_absorbs_floating_point_dust_and_nothing_wider(points, a_fit):
+    """A millionth of a difference across the sweep is a real slope, not a tie."""
+    search = BestSetupUnderTheGates(points, a_fit("permselectivity", (2.0, 1e-6, 0.0)),
+                                    a_fit("li_recovery_pct", (50.0, 10.0, 0.0)),
+                                    a_fit("highest_voltage_v", (12.0, 2.0, 0.0)))
+
+    assert search.find_best_point() == pytest.approx((1.0, -1.0, -1.0))
+
+
 def test_an_outcome_that_was_never_fitted_leaves_nothing_to_judge(points, a_fit):
     search = BestSetupUnderTheGates(points, a_fit("permselectivity", None),
                                     a_fit("li_recovery_pct", (50.0, 10.0, 0.0)),

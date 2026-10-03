@@ -563,6 +563,11 @@ The report prints whichever limits are actually in force, under the run table.
 an answer has to be a setting the bench has evidence for. A recommendation outside the
 measured range would be a guess wearing a number.
 
+**A tie is not an answer.** When every point that clears the gates is predicted the same
+permselectivity, which is what a flat fit produces, there is no best one among them. The report
+then says so in place of a setup, rather than naming whichever point happened to come first in
+the sweep and writing bench instructions for it.
+
 ### What it answers today
 
 ```

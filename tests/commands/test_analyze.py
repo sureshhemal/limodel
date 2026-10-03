@@ -70,10 +70,11 @@ def a_run(a_sampled_reading):
     lost is found in the concentrate, so both balance gaps are 0.0.
     """
     def build(run_code="AA", cem="GO-10", supply_current_a=0.1, mg_feed_mg_l=2430.5,
-              dil_li_mg_l=69.4, minutes=(0, LAST_MINUTE), include=True, li_feed_mg_l=694.0):
+              dil_li_mg_l=69.4, minutes=(0, LAST_MINUTE), include=True, li_feed_mg_l=694.0,
+              dil_mg_mg_l=243.05):
         tank_readings = [a_sampled_reading("conc", 0, 0.0, 0.0, run_code),
                          a_sampled_reading("conc", LAST_MINUTE, 34.7, 60.7625, run_code),
-                         a_sampled_reading("dil", 0, dil_li_mg_l, 243.05, run_code),
+                         a_sampled_reading("dil", 0, dil_li_mg_l, dil_mg_mg_l, run_code),
                          a_sampled_reading("dil", LAST_MINUTE, 34.7, 182.2875, run_code)]
         stack_readings = [StackReading(run_code=run_code, minute=minute, supply_voltage_v=VOLTS,
                                        supply_current_a=supply_current_a)
@@ -91,7 +92,24 @@ def a_run(a_sampled_reading):
 
 @pytest.fixture
 def three_runs(a_run):
-    """One membrane at 10, 20 and 40 mA/cm2 against feeds of 1, 2 and 4 mol/mol."""
+    """One membrane at 10, 20 and 40 mA/cm2 against feeds of 1, 2 and 4 mol/mol.
+
+    The magnesium the lab finds in the dilute doubles with the feed while the concentrate's
+    gains stay the same, so permselectivity comes out 1, 2 and 4: the fit has a slope, and the
+    sweep has a best point to find rather than a tie to break.
+    """
+    def build():
+        return [a_run(run_code="AA", supply_current_a=0.1, mg_feed_mg_l=2430.5),
+                a_run(run_code="BB", supply_current_a=0.2, mg_feed_mg_l=4861.0,
+                      dil_mg_mg_l=486.1),
+                a_run(run_code="CC", supply_current_a=0.4, mg_feed_mg_l=9722.0,
+                      dil_mg_mg_l=972.2)]
+    return build
+
+
+@pytest.fixture
+def three_runs_alike(a_run):
+    """The same three settings, every run coming out at a permselectivity of exactly 1.000."""
     def build():
         return [a_run(run_code="AA", supply_current_a=0.1, mg_feed_mg_l=2430.5),
                 a_run(run_code="BB", supply_current_a=0.2, mg_feed_mg_l=4861.0),
@@ -238,15 +256,15 @@ def test_it_prints_the_terms_that_survived_for_each_outcome(report, three_runs):
 def test_it_prints_the_error_beside_the_scatter_it_is_judged_against(report, three_runs):
     """No setup was run twice here, so there is no bench scatter to hold the error against."""
     lines = report(three_runs())
+    judgement = lines[find_index(lines, "intercept +50") + 1]
 
-    assert "off by 0.000, with no setup run twice to judge it against" in find_line(lines,
-                                                                                    "off by")
+    assert "off by 0.000, with no setup run twice to judge it against" in judgement
 
 
 def test_the_bench_scatter_is_printed_when_a_setup_was_run_twice(report, three_runs, a_run):
     """DD repeats AA setting for setting and came out the same, so the pair scatters by 0."""
     lines = report([*three_runs(), a_run(run_code="DD")])
-    judgement = find_line(lines, "bench scatter")
+    judgement = lines[find_index(lines, "intercept +50") + 1]
 
     assert "against a bench scatter of 0.000 from 1 repeat" in judgement
     assert "earned no conclusion" not in judgement
@@ -279,7 +297,7 @@ def test_it_quotes_what_the_best_setup_is_predicted_to_give(report, three_runs):
     lines = report(three_runs())
     promise = lines[find_index(lines, "best setup") + 1]
 
-    assert "permselectivity 1.000" in promise
+    assert "permselectivity 3.833" in promise
     assert "recovery % 50.000" in promise
     assert "volts 16.000" in promise
 
@@ -400,6 +418,17 @@ def test_a_membrane_with_no_passing_setup_still_shows_the_closest_one(report, th
     assert "short of the lithium recovery floor by" in "\n".join(lines)
 
 
+def test_a_permselectivity_the_same_on_every_run_prints_no_best_setup(report, three_runs_alike):
+    """Three runs all at 1.000 give the fit nothing to slope along, so every point of the sweep
+    promises the same. The report says so, rather than naming the first corner of the grid and
+    writing bench instructions for it."""
+    lines = report(three_runs_alike())
+
+    assert "predicted the same permselectivity, 1.000" in find_line(lines, "no best setup")
+    assert "closest anyway" not in "\n".join(lines)
+    assert "how to run it" not in "\n".join(lines)
+
+
 def test_a_membrane_with_a_passing_setup_shows_no_closest(report, three_runs, monkeypatch):
     """There is nothing to be closest to once a setting passes, so the line would be noise."""
     monkeypatch.setattr(config, "RECOVERY_FLOOR_PCT", 0.0)
@@ -442,8 +471,8 @@ def test_no_feed_in_mg_per_litre_when_the_runs_disagree_on_the_lithium(report, a
 def test_the_hours_are_worked_out_on_the_middle_run_not_an_odd_one(report, a_run):
     """One run with a tank four times the size must not drag the figure the report quotes."""
     runs = [a_run(run_code="AA", supply_current_a=0.1, mg_feed_mg_l=2430.5),
-            a_run(run_code="BB", supply_current_a=0.2, mg_feed_mg_l=4861.0),
-            a_run(run_code="CC", supply_current_a=0.4, mg_feed_mg_l=9722.0)]
+            a_run(run_code="BB", supply_current_a=0.2, mg_feed_mg_l=4861.0, dil_mg_mg_l=486.1),
+            a_run(run_code="CC", supply_current_a=0.4, mg_feed_mg_l=9722.0, dil_mg_mg_l=972.2)]
 
     lines = report(runs)
 
