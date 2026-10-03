@@ -1,10 +1,10 @@
-"""The diluate tank: what it is held to."""
+"""The dilute tank: what it is held to."""
 
 from limodel.analyzer.preprocess.steps.inspectors.tank_inspector import TankInspector
 
 
-class DiluateTankInspector(TankInspector):
-    """The diluate, which loses weight and conductivity as the ions leave, and is topped up."""
+class DiluteTankInspector(TankInspector):
+    """The dilute, which loses weight and conductivity as the ions leave, and is topped up."""
 
     tank = "dil"
 

@@ -1,0 +1,528 @@
+\section{Fitting the polynomial}
+
+The modelling stage takes the \texttt{Result} rows the calculator handed on and makes, for each
+membrane separately, three fitted equations and one search. Nothing here looks at a reading or
+a sample again. The whole stage is \texttt{src/limodel/analyzer/model/}, and
+\texttt{Surrogate.find\_models} is the only entry point.
+
+Two things are decided before any arithmetic. First, the membrane is not a variable: the runs
+are grouped by \texttt{cem} and the equation is fitted once per membrane.
+\texttt{docs/polynomial.md} allowed either that or a 0/1 indicator; the code took the
+per-membrane branch, which means the fits never borrow strength from each other. Second, a
+membrane needs at least \texttt{Surrogate.FEWEST\_RUNS}, which is 3, because an intercept and
+one slope is two coefficients and leave-one-out needs a row to spare.
+
+On the 16 calculated runs that leaves two membranes fitted and two refused:
+
+\begin{table}[htbp]
+  \centering
+  \caption{The four membranes in the current data, and what the fitting did with each.}
+  \label{tab:membranes-fitted}
+  \begin{tabular}{@{}lrl@{}}
+    \toprule
+    Membrane & Runs & Outcome \\
+    \midrule
+    GO-10            & 9 & fitted in both settings \\
+    Pristine         & 5 & fitted in current density; feed ratio dropped \\
+    PDA/PEI/15CE/BT  & 1 & not fitted: 1 run against the 3 a fit needs \\
+    PDA-GO10/PEI/BT  & 1 & not fitted: 1 run against the 3 a fit needs \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A membrane that cannot be fitted is not silently skipped. It goes into
+\texttt{SurrogateModels\allowbreak{}.not\_fitted} with the reason attached, and the report prints
+it, because
+``this membrane has one run'' is the next experiment worth booking rather than a footnote.
+
+\subsection{The two design columns, logged and coded}
+
+\texttt{DesignPoints} owns both settings of every run and the two translations between real
+units and the units the fitting works in. The columns are
+\texttt{current\_density\_ma\_cm2} and \texttt{feed\_mg\_li\_ratio} --- current density $J$ in
+$\unit{mA/cm^2}$, and the feed's Mg/Li in $\unit{mol/mol}$. Both come from the calculate stage:
+$J$ is the median supply current over the membrane area, and the feed ratio is worked out from
+the run's own feed concentrations.
+
+Each setting is logged first, then centred and scaled:
+
+\begin{align}
+  \label{eq:coding}
+  x_1 &= \frac{\ln J - c_J}{h_J}, &
+  c_J &= \tfrac{1}{2}\bigl(\ln J_{\max} + \ln J_{\min}\bigr), &
+  h_J &= \tfrac{1}{2}\bigl(\ln J_{\max} - \ln J_{\min}\bigr), \\
+  \label{eq:coding-r}
+  x_2 &= \frac{\ln R - c_R}{h_R}, &
+  c_R &= \tfrac{1}{2}\bigl(\ln R_{\max} + \ln R_{\min}\bigr), &
+  h_R &= \tfrac{1}{2}\bigl(\ln R_{\max} - \ln R_{\min}\bigr).
+\end{align}
+
+The extremes in \eqref{eq:coding} and \eqref{eq:coding-r} are taken over the runs of the
+membrane being fitted, so $x_1$ and $x_2$ run from $-1$ to $+1$ by construction. That is the
+whole point of the coding, and the search later leans on it.
+
+Two reasons for the two transforms, and they are separate reasons.
+
+The logarithm is because each setting spans several fold rather than a few units. Across the
+GO-10 runs $J$ goes from $4.50$ to $25.67\unit{mA/cm^2}$, a factor of $5.70$, and the feed ratio
+from $1.43$ to $11.42\unit{mol/mol}$, a factor of $8.00$. On a raw scale a quadratic over that
+span is dominated by whatever happens at the top end; on a log scale the steps between the
+levels run are roughly even, so every run gets comparable say in the curvature.
+
+The centring and scaling is because the squared terms would otherwise swamp the linear ones.
+Logged but uncoded, the GO-10 current density column runs over $1.504$ to $3.245$, so its
+square would run over $2.26$ to $10.53$ --- a column an order of magnitude larger than its own
+linear partner, strongly correlated with it, and pushing the least-squares solve towards a
+badly conditioned matrix. In coded units $x$ and $x^2$
+both sit inside $[-1,1]$ and the coefficients are directly comparable: $b_1$ and $b_3$ are both
+``change in the outcome across half the measured span''.
+
+Table~\ref{tab:coded} is the coding for the runs as they stand.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The GO-10 design, in real units and coded. Centres and half-widths are
+           $c_J = 2.374635$, $h_J = 0.870558$, $c_R = 1.395778$, $h_R = 1.039721$ in logged
+           units; $e^{c_J} = 10.75\unit{mA/cm^2}$ and $e^{c_R} = 4.04\unit{mol/mol}$ are the
+           geometric centres.}
+  \label{tab:coded}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Run & $J$ ($\unit{mA/cm^2}$) & $R$ ($\unit{mol/mol}$) & $x_1$ & $x_2$ \\
+    \midrule
+    AE & 13.67 &  1.43 & $+0.276058$ & $-1.000000$ \\
+    AF & 13.67 &  2.86 & $+0.276058$ & $-0.333333$ \\
+    AG & 13.67 &  5.71 & $+0.276058$ & $+0.333333$ \\
+    AH &  7.50 &  1.43 & $-0.413220$ & $-1.000000$ \\
+    AI &  7.50 &  1.43 & $-0.413220$ & $-1.000000$ \\
+    AJ &  4.50 &  1.43 & $-1.000000$ & $-1.000000$ \\
+    AN & 25.67 &  1.43 & $+1.000000$ & $-1.000000$ \\
+    AP & 25.67 &  1.43 & $+1.000000$ & $-1.000000$ \\
+    AT & 13.67 & 11.42 & $+0.276058$ & $+1.000000$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The five Pristine runs --- AK, AL, AM, AO, AQ --- sit at $J = 13.67$, $7.50$, $4.50$, $25.67$
+and $25.67\unit{mA/cm^2}$, all at $R = 1.43\unit{mol/mol}$. Their $x_1$ values are the same four
+numbers as GO-10's, because the extremes of $J$ happen to be the same, and their $x_2$ is $0.00$
+throughout.
+
+The shape of Table~\ref{tab:coded} is worth a moment, because it governs everything after it.
+Current density was moved only at the lowest feed ratio, and the feed ratio was moved only at
+$13.67\unit{mA/cm^2}$. The design is a cross, not a grid.
+
+The code's columns differ in two places from the table in the agreed
+document, and neither difference is a code fault:
+
+\begin{itemize}[nosep]
+  \item The doc lists $R$ levels of $5, 10, 20, 40, 60$. Those are mass ratios --- the feed
+        holds $400\unit{mg/L}$ Li against $2000$, $4000$, $8000$ or $16000\unit{mg/L}$ Mg. The
+        code's column is $\unit{mol/mol}$, so the same four levels read as $1.43$, $2.86$,
+        $5.71$ and $11.42$, a fixed factor of $M_{\mathrm{Li}}/M_{\mathrm{Mg}} = 0.285538$ apart.
+        Because \eqref{eq:coding-r} logs then centres, a constant factor moves $c_R$ and nothing
+        else --- the coded values are identical either way. The $60$ level has not been run.
+  \item The doc lists $J$ levels of $3, 6, 12, 24$. Those are nominal. The code uses the median
+        supply current actually logged, which gives $4.50$, $7.50$, $13.67$ and
+        $25.67\unit{mA/cm^2}$. The fit uses what the supply held, not what it was asked for.
+\end{itemize}
+
+\subsection{A setting held at one value is dropped, not a refusal}
+
+The feed ratio never moved across the Pristine runs. A naive fit would then have a column of
+identical numbers, which after centring is a column of zeroes --- the solve would be rank
+deficient and the whole membrane would be thrown out.
+
+\texttt{DesignPoints} handles it by name instead. \texttt{find\_scales} gives that setting a
+half-width of exactly $0$; \texttt{find\_kept\_settings} returns only the settings whose
+half-width is non-zero; \texttt{find\_usable\_coded\_names} turns those into the coded names the
+polynomial knows, and \texttt{find\_dropped\_settings} names the rest so the report can say so.
+A dropped setting is coded as $0.0$, the one place it was ever run, and its terms are left out by
+name, so the zero column never reaches a least-squares call.
+
+Today this applies to Pristine and only Pristine. What it changes:
+
+\begin{itemize}[nosep]
+  \item The candidate terms shrink from four to two. A term is kept only if the setting
+        under it varies, which \texttt{find\_candidates\_on} decides, so Pristine's
+        candidates are \texttt{x1} and \texttt{x1\_squared}.
+  \item The report says it out loud. The ``fitted in'' line reads \emph{current density, with
+        the feed ratio held at one value across these runs and never tested}, which stops a fit
+        in one setting being read as a fit in two.
+  \item The search still returns a feed ratio. \texttt{find\_real\_from\_coded} multiplies the
+        coded value by a half-width of zero, so whatever $x_2$ the grid offers reads back as
+        $1.43\unit{mol/mol}$ --- the one value it was held at.
+\end{itemize}
+
+Both settings held at one value is a different matter: \texttt{find\_scales} then returns
+\texttt{None}, and \texttt{Surrogate.find\_refusal\_for} refuses the membrane with \emph{no
+setting that varies across its runs, so there is nothing to fit}. Runs that moved nothing carry
+no information about anything.
+
+\subsection{The candidate terms, and why there is no interaction}
+
+\texttt{SecondOrderPolynomial.TERMS\_IN\_ORDER} is five terms, not six:
+
+\begin{equation}
+  \label{eq:polynomial}
+  \hat{y} \;=\; b_0 \;+\; b_1 x_1 \;+\; b_2 x_2 \;+\; b_3 x_1^2 \;+\; b_4 x_2^2
+\end{equation}
+
+\texttt{docs/polynomial.md} writes a sixth term, $b_5 \, J \cdot R$, and calls it the term that
+says whether the best current depends on how much Mg is in the feed. It is not in the code, and
+the reason is arithmetic rather than preference: over these runs that column does not carry any
+information the other three do not already carry.
+
+Here is the proof rather than the assertion. Look again at Table~\ref{tab:coded}. Every run with
+$x_2 \neq -1$ sits at $x_1 = 0.276058$, and every run with $x_1 \neq 0.276058$ sits at
+$x_2 = -1$. Write $u = 0.276058056371$, the coded value of $13.67\unit{mA/cm^2}$. Then for every
+one of the nine GO-10 rows,
+
+\begin{equation}
+  \label{eq:identity}
+  x_1 x_2 \;=\; u \;-\; x_1 \;+\; u\,x_2 .
+\end{equation}
+
+Check it both ways. On the arm where $x_2 = -1$, the right side is $u - x_1 - u = -x_1$, which is
+$x_1 x_2$. On the arm where $x_1 = u$, it is $u - u + u x_2 = u x_2$, which is again $x_1 x_2$.
+Every row lies on one arm or the other, so \eqref{eq:identity} holds everywhere.
+
+Regressing the $x_1 x_2$ column on $[\mathbf{1}, x_1, x_2]$ with \texttt{numpy.linalg.lstsq}
+returns the coefficients $(+0.276058, -1.000000, +0.276058)$ and a largest absolute residual of
+$6.7 \times 10^{-16}$ --- floating-point dust, not a near miss. Checking \eqref{eq:identity}
+directly gives a largest error of $1.1 \times 10^{-16}$.
+
+So the interaction is an exact linear combination of the intercept and the two linear terms, and
+the matrix ranks say the same thing:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Rank of the design matrix over the fitted runs, from
+           \texttt{numpy.linalg.matrix\_rank}.}
+  \label{tab:rank}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Columns & Rows & Columns & Rank \\
+    \midrule
+    \multicolumn{4}{@{}l}{\textit{GO-10, 9 runs}} \\
+    $[\mathbf{1},\,x_1,\,x_2,\,x_1 x_2]$                     & 9 & 4 & 3 \\
+    $[\mathbf{1},\,x_1,\,x_2,\,x_1^2,\,x_2^2]$               & 9 & 5 & 5 \\
+    $[\mathbf{1},\,x_1,\,x_2,\,x_1^2,\,x_2^2,\,x_1 x_2]$     & 9 & 6 & 5 \\
+    \midrule
+    \multicolumn{4}{@{}l}{\textit{Pristine, 5 runs}} \\
+    $[\mathbf{1},\,x_1,\,x_2,\,x_1 x_2]$                     & 5 & 4 & 2 \\
+    $[\mathbf{1},\,x_1,\,x_2,\,x_1^2,\,x_2^2,\,x_1 x_2]$     & 5 & 6 & 3 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The singular values of the full six-column GO-10 matrix make the same point:
+
+\begin{equation}
+  \label{eq:singular}
+  \sigma \;=\; \bigl(4.6488,\; 2.6124,\; 1.8651,\; 0.9843,\; 0.7760,\; 0.0000\bigr)
+\end{equation}
+
+The last entry of \eqref{eq:singular} is zero, not small. A zero singular value means the
+interaction coefficient does not exist: infinitely many values of $b_5$, each with matching
+changes in $b_0$, $b_1$ and $b_2$, fit the nine rows exactly as well. Least squares would hand
+back one of them, and it would mean nothing.
+
+The five-term matrix in \eqref{eq:polynomial} is full rank, 5 of 5, so the squared terms are not
+affected by this. It is the product that has no support.
+
+Pristine is simpler still: $x_2 = 0$ throughout, so $x_1 x_2$ is literally a column of zeroes.
+
+The code does not just omit the term --- it also refuses any fit that turns out rank deficient.
+\texttt{SecondOrderPolynomial.find\_fit} reads the rank back from \texttt{lstsq} and returns
+\texttt{None} when it is short of the number of terms, so a term set these rows cannot settle
+can never be reported as if it had been settled.
+
+Getting the interaction back needs runs, not code: one run at a high feed ratio and a different
+current density would break \eqref{eq:identity} on its own. AT moved the feed ratio to
+$11.42\unit{mol/mol}$ but stayed at $13.67\unit{mA/cm^2}$, so it sits on the same arm.
+
+\subsection{Forward stepwise selection}
+
+The agreed document, \texttt{docs/polynomial.md}, writes the full equation and fits it. The code
+does not. It grows the equation one term at a time, in
+\texttt{FittedOutcome.find\_best\_polynomial}:
+
+\begin{enumerate}[nosep]
+  \item Start with the intercept alone and record its leave-one-out error.
+  \item Of the terms it is allowed to add, try each one and keep the one that lowers the error
+        most.
+  \item Stop when no remaining term lowers it.
+\end{enumerate}
+
+Two rules shape the search. A squared term waits for its own linear term:
+\texttt{find\_terms\_it\_may\_add} will not offer \texttt{x2\_squared} until \texttt{x2} is in,
+because a curvature with no slope under it cannot be read as anything. And ties go to the
+simpler term --- candidates are scanned in the order \texttt{x1}, \texttt{x2},
+\texttt{x1\_squared}, \texttt{x2\_squared}, and an error that merely equals the incumbent does
+not displace it, nor does it keep the search going.
+
+This is a departure from the agreed document, and the reason is that the runs cannot settle that
+many coefficients. Nine GO-10 rows for a five-term equation leaves four degrees of freedom, and
+two of the nine rows repeat two others --- so the design holds seven distinct points. Fitting
+five coefficients to seven points produces an equation that passes close to everything and
+predicts nothing. Pristine is worse: five runs, four distinct currents. Growing
+the equation only while each new term pays for itself out of sample is how the fit is kept to the
+size the data can support.
+
+The honest caveat is that the reported error is the same quantity the search minimised, so it is
+mildly optimistic as an estimate of error on a fresh run. The comparison in the next subsection
+is what guards against reading too much into it.
+
+Once the term set is chosen, the coefficients that get printed come from a final fit on
+\emph{all} the rows: \texttt{find\_fit} refits the chosen terms over every row after the
+search finishes. The leave-one-out folds are only ever used to score term sets, never to
+produce the published coefficients.
+
+Table~\ref{tab:stepwise} is the search as it actually ran, for all six fits.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Every step of the forward search, with the leave-one-out error each candidate
+           reached. The chosen term at each step is marked; a dash means the term was not
+           offered, either because it was already in or because its linear partner was not.}
+  \label{tab:stepwise}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Fit so far & \texttt{x1} & \texttt{x2} & \texttt{x1\_squared} & \texttt{x2\_squared} \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{GO-10, permselectivity --- intercept alone: 0.7678}} \\
+    intercept                     &  0.8683 & \textbf{0.5611} & ---    & ---    \\
+    intercept, \texttt{x2}        &  0.7584 & ---             & ---    & 0.6051 \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{GO-10, recovery \% --- intercept alone: 15.0521}} \\
+    intercept                     & 16.2443 & \textbf{7.8979} & ---    & ---    \\
+    intercept, \texttt{x2}        &  9.9497 & ---             & ---    & \textbf{7.1218} \\
+    $\dots$, \texttt{x2\_squared} &  9.4710 & ---             & ---    & ---    \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{GO-10, volts --- intercept alone: 4.0593}} \\
+    intercept                     & \textbf{1.3385} & 4.3523  & ---    & ---    \\
+    intercept, \texttt{x1}        & ---     & 1.5419          & 1.4018 & ---    \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{Pristine, permselectivity --- intercept alone: 0.0614}} \\
+    intercept                     &  0.0741 & ---             & ---    & ---    \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{Pristine, recovery \% --- intercept alone: 2.9138}} \\
+    intercept                     &  3.6629 & ---             & ---    & ---    \\
+    \midrule
+    \multicolumn{5}{@{}l}{\textit{Pristine, volts --- intercept alone: 5.8947}} \\
+    intercept                     & \textbf{1.0682} & ---     & ---    & ---    \\
+    intercept, \texttt{x1}        & ---     & ---             & 2.9568 & ---    \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Three things in that table are worth reading twice. No fit ever reached three terms except
+GO-10's recovery, which took \texttt{x2} and then \texttt{x2\_squared}. Current density never
+earned a place in a permselectivity or recovery fit --- for GO-10 it made both errors
+\emph{worse} than the intercept alone. And two Pristine fits kept nothing at all: the best
+prediction of its permselectivity or recovery at any setting is the average of the five runs.
+
+\subsection{Leave-one-out, not a hold-out set}
+
+\texttt{LeaveOneOutError.find\_rmse} is the only error measure in the stage. Each row takes its
+turn being held back; the polynomial is fitted on the rest and asked to predict the one it never
+saw; the misses are squared, averaged and rooted:
+
+\begin{equation}
+  \label{eq:loo}
+  \mathrm{RMSE}_{\text{LOO}} \;=\; \sqrt{\frac{1}{n}\sum_{i=1}^{n}
+    \bigl(\hat{y}^{(-i)}(x_i) - y_i\bigr)^2}
+\end{equation}
+
+Every row in \eqref{eq:loo} is predicted by a fit that did not include it, so the number is out
+of sample $n$ times over. It returns \texttt{None} rather than a number whenever a fold cannot
+be fitted, whenever an outcome is missing, and whenever there are fewer than two rows --- and the
+stepwise search treats \texttt{None} as ``this term cannot be judged'' and moves on, which is
+why a term set the data cannot settle never wins by default.
+
+A train/test split was rejected for one reason: with nine rows a hold-out set measures nothing.
+Hold two GO-10 runs back and the error is an average of two squared misses; swap which two and
+the number moves more than the differences between the models it is meant to be choosing
+between. Worse, the seven rows left would not span the design --- hold back AT and the feed
+ratio no longer reaches $11.42\unit{mol/mol}$, so the model being tested is not the model being
+proposed. Leave-one-out spends no rows permanently and produces one honest out-of-sample miss
+per run instead of two in total.
+
+The real test set is arriving on its own. AV, AW, AX and AY have no lab results yet, so they are
+dropped today; when their results land they are unseen runs that no fit has touched.
+
+\subsection{Replicate scatter: the yardstick}
+
+An error of $0.561$ on permselectivity is meaningless on its own. It needs something to be
+compared against, and the only fair comparison is how far apart the bench's own repeats came
+out. \texttt{ReplicateScatter} works that out.
+
+A repeat is two runs at the same membrane and the same two settings, matched to two decimal
+places --- \texttt{ReplicateScatter.PLACES}. The rounding is there because the settings are
+computed, not typed in: $25.666666666666668$ and $25.666666666666664$ are the same experiment,
+and matching the raw floats would miss it. Runs missing the outcome or either setting are passed
+over.
+
+Within each group the spread is pooled across groups rather than averaged, which is the standard
+way to combine two small samples of the same underlying noise:
+
+\begin{equation}
+  \label{eq:pooled}
+  s \;=\; \sqrt{\frac{\sum_{g}\sum_{i \in g}\bigl(y_i - \bar{y}_g\bigr)^2}
+                     {\sum_{g}\bigl(n_g - 1\bigr)}}
+\end{equation}
+
+The denominator in \eqref{eq:pooled} is the degrees of freedom, and it is reported beside the
+spread so a reader can see how thin the yardstick is. No group with a repeat in it means no
+yardstick at all, and \texttt{find\_spread} returns \texttt{None}.
+
+Three design points repeat in the current data:
+
+\begin{table}[htbp]
+  \centering
+  \caption{The replicated design points and what each pair gave, with the pooled spread from
+           \eqref{eq:pooled}. $J$ is in $\unit{mA/cm^2}$ and $R$ in $\unit{mol/mol}$. GO-10
+           pools two pairs; Pristine has one.}
+  \label{tab:replicates}
+  \begin{tabular}{@{}lrrlll@{}}
+    \toprule
+    Runs & $J$ & $R$ & Permselectivity & Recovery (\%) & Volts \\
+    \midrule
+    AH, AI &  7.50 & 1.43 & 2.3881, 2.0322 & 36.59, 37.66 & 10.55, 10.22 \\
+    AN, AP & 25.67 & 1.43 & 1.9177, 1.3217 & 39.50, 26.32 & 18.54, 16.91 \\
+    \multicolumn{3}{@{}l}{GO-10 pooled, 2 d.o.f.}
+           & 0.3471 & 6.6124 & 0.8315 \\
+    \midrule
+    AO, AQ & 25.67 & 1.43 & 0.2115, 0.2986 &  7.83, 11.38 & 16.84, 17.04 \\
+    \multicolumn{3}{@{}l}{Pristine pooled, 1 d.o.f.}
+           & 0.0615 & 2.5075 & 0.1414 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Look at the GO-10 recovery pair AN and AP: $39.50\%$ and $26.32\%$ at the same setting on the
+same membrane. That single pair is most of the $6.6124$ pooled spread, and it is the honest
+statement of how reproducible recovery is at $25.67\unit{mA/cm^2}$ today.
+
+This is why \texttt{FittedOutcome} carries the spread alongside the coefficients and the error:
+the three travel together because an equation on its own cannot be judged. A fit that misses by
+more than the bench's own repeats has learnt nothing the repeats did not already say --- it has
+fitted the scatter. The report makes that call outright rather than printing two numbers and
+leaving it to the reader, and it makes it at the three decimals it prints, so two numbers that
+display the same are not treated as separated.
+
+\subsection{The gated search for the best setup}
+
+The question is not ``what is the most selective setting'' but ``what is the most selective
+setting that is still worth running''. So all three fitted outcomes are needed:
+permselectivity to maximise, and recovery and voltage to gate.
+\texttt{BestSetupUnderTheGates} does this per membrane.
+
+\begin{itemize}[nosep]
+  \item \textbf{The grid.} \texttt{STEPS} is 21 levels per setting, evenly spaced in coded units
+        from $-1$ to $+1$, which is $0.1$ apart --- $441$ combinations in all. Because the coding
+        is on logs, those levels are geometric in real units: each step multiplies $J$ by
+        $1.0910$ and the feed ratio by $1.1096$.
+  \item \textbf{The sweep stays inside the measured range.} Coded $-1$ and $+1$ are exactly the
+        lowest and highest run of the membrane being searched, so sweeping that span and no
+        further is what keeps the answer to a setting the bench has evidence for. For GO-10 that
+        is $4.50$ to $25.67\unit{mA/cm^2}$ and $1.43$ to $11.42\unit{mol/mol}$. A quadratic
+        extrapolated past its last data point curves away fast and in whichever direction the
+        algebra happens to point; the recommendation would be a reading taken past the last run.
+  \item \textbf{The recovery floor.} \texttt{RECOVERY\_FLOOR\_PCT} is $35.0$. Less lithium than
+        that recovered is not worth a run.
+  \item \textbf{The voltage ceiling.} \texttt{VOLTAGE\_CEILING\_V} is $20.0$. The supply and the
+        stack are not asked to go above it.
+  \item \textbf{The winner.} Of the points that clear both gates, the one with the highest
+        predicted permselectivity, converted back to $\unit{mA/cm^2}$ and $\unit{mol/mol}$ by
+        \texttt{find\_real\_from\_coded}.
+\end{itemize}
+
+Both gates must be clear; \texttt{find\_gates\_failed\_at} returns the list of gates a point
+falls foul of, and only an empty list survives. A point where any one of the three outcomes
+cannot be predicted returns \texttt{None} and is counted as neither passed nor failed.
+
+Refusing every point is a finding and not an error, and the code is built around that. It keeps a
+count of how many of the $441$ points each gate turned away, and \texttt{find\_refusal} names the
+gate responsible in a sentence the report prints. ``Nothing in the range you have tested is worth
+running'' is a true and useful answer to the question that was asked.
+
+That is exactly what happens today. For both fitted membranes, all $441$ points fail the recovery
+floor and $0$ fail the voltage ceiling:
+
+\begin{table}[htbp]
+  \centering
+  \caption{The gated search on the current fits. The highest predicted values anywhere on the
+           grid, against the two limits.}
+  \label{tab:gates}
+  \begin{tabular}{@{}lrrrrr@{}}
+    \toprule
+    Membrane & Points & Best recovery (\%) & Floor (\%) & Worst volts & Ceiling \\
+    \midrule
+    GO-10    & 441 & 33.285 & 35.0 & 18.246 & 20.0 \\
+    Pristine & 441 &  9.057 & 35.0 & 17.320 & 20.0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+GO-10 comes close --- $33.285\%$ against a floor of $35\%$ --- and the voltage was never the
+binding constraint for either membrane. Pristine fails by a mile for a simple reason: its
+recovery fit kept no terms, so it predicts $9.057\%$ everywhere, which is the mean of its five
+runs.
+
+\subsection{What the fits are today}
+
+Table~\ref{tab:fits} is what \texttt{uv run limodel analyze} prints. The terms column is the
+equation exactly as the report writes it; the error is the leave-one-out RMSE from
+\eqref{eq:loo}; the scatter is the pooled replicate spread from \eqref{eq:pooled} with its
+degrees of freedom.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Every fitted equation in the current data, with its leave-one-out error and the
+           pooled bench scatter beside it; the scatter's degrees of freedom are in brackets.
+           Only Pristine's permselectivity is inside the scatter.}
+  \label{tab:fits}
+  \begin{tabular}{@{}llrr@{}}
+    \toprule
+    Outcome & Terms as printed & Error & Scatter \\
+    \midrule
+    \multicolumn{4}{@{}l}{\textit{GO-10 --- fitted in current density and the feed ratio}} \\
+    permselectivity & \texttt{intercept +1.126, x2 -0.712}      & 0.561 & 0.347 (2) \\
+    recovery \%     & \texttt{intercept +11.58, x2 -15.63,}
+                                                                 & 7.122 & 6.612 (2) \\
+                    & \texttt{x2\_squared +6.08}                &       &           \\
+    volts           & \texttt{intercept +12.7, x1 +5.545}       & 1.339 & 0.832 (2) \\
+    \midrule
+    \multicolumn{4}{@{}l}{\textit{Pristine --- fitted in current density, with the feed ratio
+                                   held at one value}} \\
+    permselectivity & \texttt{intercept +0.2326}                & 0.061 & 0.062 (1) \\
+    recovery \%     & \texttt{intercept +9.057}                 & 2.914 & 2.508 (1) \\
+    volts           & \texttt{intercept +11.41, x1 +5.905}      & 1.068 & 0.141 (1) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Five of the six fits print the sentence \emph{which is worse than the bench repeating itself, so
+this fit has earned no conclusion}. Neither membrane gets a best setup; both print \emph{nothing
+inside the measured range cleared the lithium recovery floor}.
+
+Read plainly, that is the state of the modelling. One fit --- Pristine permselectivity, at
+$0.061$ against a scatter of $0.062$ --- is inside the bench's own noise, and it is the fit that
+kept no terms at all, so what it says is that Pristine's permselectivity is about $0.23$
+regardless of current density. Everything else misses the held-out run by more than two repeats
+of the same run differ from each other.
+
+The two coefficients that do point somewhere are worth naming even so, because they are the only
+two the search kept more than once. GO-10's permselectivity falls with the feed ratio
+($-0.712$ across half the coded span, roughly a factor of $2.83$ in Mg/Li), and voltage rises
+with current density on both membranes by about the same amount ($+5.545$ and $+5.905$ volts
+across half the span). Neither is a surprise, and neither has cleared the yardstick.
+
+The useful conclusion is about the design rather than the chemistry. The cross in
+Table~\ref{tab:coded} is why there is no interaction term, five of six errors are above the
+scatter, and the two thinnest membranes have one run each. Runs at a high feed ratio and a
+current density other than $13.67\unit{mA/cm^2}$ would break \eqref{eq:identity} and let the
+interaction be fitted; a third run at $25.67\unit{mA/cm^2}$ on GO-10 would tighten the recovery
+yardstick that AN and AP currently set at $6.6$ percentage points.

@@ -2,7 +2,7 @@
 
 from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.steps.inspectors.conc_tank_inspector import ConcTankInspector
-from limodel.analyzer.preprocess.steps.inspectors.diluate_tank_inspector import DiluateTankInspector
+from limodel.analyzer.preprocess.steps.inspectors.dilute_tank_inspector import DiluteTankInspector
 from limodel.analyzer.preprocess.steps.inspectors.power_log_inspector import PowerLogInspector
 from limodel.analyzer.preprocess.steps.inspectors.rinse_tank_inspector import RinseTankInspector
 from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
@@ -11,7 +11,7 @@ from limodel.analyzer.thresholds import Thresholds
 
 def test_it_has_an_inspector_for_every_tank_and_one_for_the_power_log():
     assert [type(inspector) for inspector in SkipSuspectReadings().inspectors] == [
-        ConcTankInspector, DiluateTankInspector, RinseTankInspector, PowerLogInspector]
+        ConcTankInspector, DiluteTankInspector, RinseTankInspector, PowerLogInspector]
 
 
 def test_the_thresholds_reach_the_inspectors():

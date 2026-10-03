@@ -2,10 +2,21 @@
 
 from datetime import date
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from limodel.models.stack_reading import StackReading
 from limodel.models.tank_reading import TankReading
+
+# The same membrane has been written more than one way: GO-10 and GO10 are one material. A
+# name that squashes down to one of these is that membrane, whatever its hyphens and case.
+# Anything else is kept exactly as written, so a membrane nobody has seen before is never
+# quietly turned into one we have.
+MEMBRANE_NAMES = {
+    "go10": "GO-10",
+    "pristine": "Pristine",
+    "pdapei15cebt": "PDA/PEI/15CE/BT",
+    "pdago10peibt": "PDA-GO10/PEI/BT",
+}
 
 
 class Run(BaseModel):
@@ -33,6 +44,21 @@ class Run(BaseModel):
     tare_rinse_g: float
     include: bool
     notes: str | None = None
+
+    @field_validator("cem", mode="before")
+    @classmethod
+    def _find_the_membrane_meant(cls, written):
+        """The one spelling of a membrane we know, so four parts of the app agree on it.
+
+        Which runs are modelled, how they are grouped into fits, what counts as a repeat of
+        what, and what the report prints are all decided by this name.
+        """
+        if not isinstance(written, str):
+            return written
+
+        squashed = "".join(letter for letter in written.lower() if letter.isalnum())
+
+        return MEMBRANE_NAMES.get(squashed, written)
 
     @computed_field
     @property

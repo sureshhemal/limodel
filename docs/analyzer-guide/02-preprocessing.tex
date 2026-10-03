@@ -1,0 +1,431 @@
+\section{Deciding which readings can be believed}
+
+Between loading the CSVs and working out any chemistry sits one class, \texttt{Preprocessor}.
+It takes the list of \texttt{Run} objects the loader built and returns a shorter list, with
+some values inside the survivors set to \texttt{None}. It saves nothing and prints nothing.
+Everything it removes is written to the \texttt{Journal} it was handed, so the report can say
+later exactly what the modelling never saw.
+
+Two things it deliberately does not do. It does not repair a reading: there is no filling in,
+no smoothing, no interpolation. A value it cannot believe is removed, never replaced. And it
+does not check that required fields are present. That is the loader's job and the loader is
+all-or-nothing: each CSV is validated against its pandera schema as it is handed out, and a
+table with a required field missing raises rather than loading. So by the time the
+preprocessing sees a run, the run is well formed and only its values are in question. There is
+a comment in \texttt{Preprocessor.steps} saying exactly this, marking where a fourth step used
+to be needed and no longer is.
+
+\subsection{The three steps, in order}
+
+\texttt{Preprocessor.steps} is a tuple of three \texttt{Step} objects. Each one is given the
+runs the step before it returned, so the order is the order of the pipeline.
+
+\begin{enumerate}[nosep]
+  \item \textbf{\texttt{DropExcludedRuns}} --- keeps only runs with \texttt{include} true.
+        The mark is a decision taken at the bench, and this step only obeys it. If it would
+        return nothing while it was given something, it raises \texttt{ValueError} instead:
+        an empty result means the wrong file was loaded, not that every run was bad. Its
+        journal label is \emph{not marked for use}.
+  \item \textbf{\texttt{SkipSuspectReadings}} --- drops no run. It clears single values it
+        cannot believe, and writes down why. Its label is \emph{suspect reading}.
+  \item \textbf{\texttt{DropRunsMissingAnEndSample}} --- keeps only runs the lab has answered
+        for: both lithium and magnesium, in both the concentrate and the dilute, at the
+        first sampled minute and the last. Its label is \emph{no lab results at both ends}.
+\end{enumerate}
+
+Why step 3 comes last rather than first: it is cheaper to drop a run before inspecting its
+readings, but then a run on its way out would never be looked over. Running the inspection
+first means a doomed run still gets its bad values journalled, which is how the bench learns
+that a particular sheet has a weight written down wrong even though that run never reached the
+model. The real output shows this working --- run \texttt{AU} is dropped, and its rinse weight
+at minute 240 is journalled anyway.
+
+Step 3 asks only for the two ends because that is all the chemistry needs: the amount that
+crossed the membrane is a difference between a start and a finish. The samples in between are
+not asked for. The rinse is not asked for at all, because it is not part of the chemistry the
+modelling uses. Both metals are required rather than lithium alone, because
+permselectivity is a ratio of ratios and one metal cannot give it.
+
+\subsection{Steps hold inspectors, inspectors hold checks}
+
+Step 2 is split into three levels, and each level knows one thing.
+
+\begin{description}[nosep,style=nextline]
+  \item[A \texttt{Check} is a rule, and nothing else.] It is handed a list of readings and
+        answers with the one reading at fault, which field to clear, and a sentence saying
+        why --- or \texttt{None}. It never writes to the journal and never changes a reading.
+        It is told at construction which field it judges and what to call it, so the same rule
+        serves pH, temperature, weight or current without being rewritten.
+  \item[An \texttt{Inspector} owns one part of a run.] It picks that part's readings out of the
+        run, sorts them oldest first, builds the checks that part is held to, and does the
+        clearing and the journalling for all of them.
+  \item[The \texttt{Step} owns the loop over runs.] \texttt{SkipSuspectReadings} does nothing
+        but put every run past every inspector.
+\end{description}
+
+The split is there so that a rule is written once and judged in one place. ``This value is
+nothing like the rest of its own series'' is the same arithmetic for a tank weight and for the
+supply current, and \texttt{ValueFarFromTheMedian} is that arithmetic, used twice with
+different fields and different tolerances. It also keeps the thresholds out of the rules: no
+check holds a number of its own, so a test can hand a check different numbers and watch it
+behave differently without touching it.
+
+There are four inspectors:
+
+\begin{itemize}[nosep]
+  \item \texttt{ConcTankInspector}
+  \item \texttt{DiluteTankInspector}
+  \item \texttt{RinseTankInspector}
+  \item \texttt{PowerLogInspector}
+\end{itemize}
+
+\noindent The three tank ones share a parent,
+\texttt{TankInspector}, which holds the construction of every check a tank may be given, so a
+tank's own class is nothing but the list of what that tank is held to. As the code stands all
+three tank lists are identical --- the same six checks in the same order. They are three
+classes rather than one because the rules for one tank may well diverge from another's: the
+dilute is topped up during a run and the concentrate is not, and the day a weight rule has to
+differ between them, the change is a line in one class instead of an \texttt{if} inside a
+shared one.
+
+Each tank is also judged only against its own readings. A conductivity that is ordinary in the
+dilute is impossible in the rinse, so there is no cross-tank comparison anywhere.
+
+\subsection{What each check looks for}
+
+Six check classes do all the judging. Three of them compare a reading with its own series,
+two compare two instruments reading the same quantity, and one needs no comparison at all.
+
+\subsubsection*{\texttt{ValueOutsideTheRange}}
+
+Built for a value that is wrong on its own, whatever its neighbours say. It takes a low and a
+high bound and rejects the first reading outside them:
+\begin{equation}
+  \label{eq:outside-range}
+  \text{reject } x_i \quad\text{when}\quad \neg\,(\,\ell \le x_i \le h\,).
+\end{equation}
+It needs no minimum number of readings, because the judgement does not depend on any other
+reading. It returns the \emph{earliest} offender rather than the biggest; order does not
+matter here, because the inspector asks again after each one and works through them all. It
+guards pH and temperature in every tank.
+
+\subsubsection*{\texttt{ValueFarFromTheMedian}}
+
+Built for a value that holds one level all run. With $m$ the median of the series and $s$ the
+share allowed, it returns the reading furthest from $m$, if that distance is too far:
+\begin{equation}
+  \label{eq:far-from-median}
+  i^\star = \arg\max_i\,\lvert x_i - m\rvert,
+  \qquad
+  \text{reject } x_{i^\star} \text{ when } \lvert x_{i^\star} - m\rvert > s\,\lvert m\rvert.
+\end{equation}
+The median is used rather than the mean because one bad value cannot drag it, and because it
+does not care whether the bad value sits at the start of the run or the end. The tolerance is a
+share of the median, not an absolute amount, so one number works for a rinse tank holding some
+$4\unit{kg}$ and a concentrate tank holding some $2.1\unit{kg}$. It guards the tank weights and
+the supply current, and it is the only check given the ``fewest readings'' threshold: with
+fewer than three readings it says nothing, because with two each looks as odd as the other.
+
+\subsubsection*{\texttt{ValueMovingTooFast}}
+
+Built for a value that drifts but cannot lurch. Readings in this data are 5 to 240 minutes
+apart, so the allowance is a rate and not a step --- strict on readings taken close together,
+forgiving of slow drift across a long gap. For every consecutive pair it compares the speed of
+the change with the allowance $a$ over $T$ minutes:
+\begin{equation}
+  \label{eq:moving-too-fast}
+  \frac{\lvert x_{i+1} - x_i\rvert}{t_{i+1} - t_i} > \frac{a}{T}.
+\end{equation}
+Pairs no time apart are skipped, so the division is always safe. The fastest offending pair
+wins. A pair says that two readings cannot both be right but not which one is wrong, so the
+blame goes to whichever of the two sits further from the median of the series. It guards pH and
+temperature in every tank, and needs at least two readings.
+
+\subsubsection*{\texttt{JumpThatComesBack}}
+
+Built for conductivity, which climbs or falls all run. There is no one level to compare
+against, so the median is useless as a reference --- but a digit written down wrong still has a
+signature: the series leaves its track and the next reading puts it straight back. A real
+change of level stays changed. Over every window of three readings, with
+$J = x_{i+1} - x_i$ and $B = x_{i+2} - x_{i+1}$,
+\begin{equation}
+  \label{eq:jump-and-back}
+  \lvert J \rvert > g\,\lvert m \rvert
+  \qquad\text{and}\qquad
+  \frac{-B}{J} \ge c,
+\end{equation}
+and the middle reading $x_{i+1}$ is the one cleared. The first condition keeps an ordinary
+wobble on a smooth series from counting as a jump; the median $m$ is used only to set that
+scale. The second condition is the share of the jump that came back, and it is reported as a
+percentage in the journal line. It can exceed 100\%: run \texttt{AR}'s concentrate at minute 60
+put 132\% back, meaning the series overshot its way home. Fewer than three readings and the
+check says nothing, since the window needs three. It is the one check with its own hard-coded
+minimum rather than the shared threshold.
+
+\subsubsection*{\texttt{PairedValuesTooFarApart}}
+
+The stack voltage falls all run, so again there is no level to compare against --- but it was
+written down twice, once from the supply and once from the multimeter. Those two agree to
+hundredths of a volt, so a gap of a whole volt means one of them has a digit too many or too
+few. The check takes the widest gap and rejects it if it is over the limit:
+\begin{equation}
+  \label{eq:voltage-gap}
+  \text{reject the widest } \lvert v^{\text{supply}}_i - v^{\text{meter}}_i\rvert
+  \quad\text{when it exceeds } \Delta_{\max}.
+\end{equation}
+
+\subsubsection*{\texttt{PairedValuesOutOfProportion}}
+
+The same idea for the currents, which cannot be subtracted: the supply reads about a seventh
+higher than the multimeter throughout, and in different units. So the two are held against
+each other as a ratio, after the supply's amps are scaled by 1000 to meet the multimeter's
+milliamps:
+\begin{equation}
+  \label{eq:current-ratio}
+  r_i = \frac{1000\,I^{\text{supply}}_i}{I^{\text{meter}}_i}.
+\end{equation}
+The reading rejected is the one whose $r_i$ falls furthest from 1 among those outside
+$[\,\ell,\,h\,]$. Readings where the multimeter wrote a zero are left out, so the ratio is
+never divided by zero.
+
+\subsubsection*{Which of two instruments gets the blame}
+
+Both paired checks share \texttt{PairedValueCheck}, and both face the same problem: a
+disagreement does not say which instrument is wrong. What does say is each column's own
+history. The honest instrument stays near what it has been reading all run, so the blame goes
+to whichever of the two sits further from the median of its \emph{own} column, measured as a
+share of that median so that amps and milliamps compare fairly:
+\begin{equation}
+  \label{eq:odd-one}
+  \text{blame} = \arg\max_{k \in \{\text{supply},\,\text{meter}\}}
+  \frac{\lvert v^k_i - \operatorname{median}(v^k) \rvert}{\lvert \operatorname{median}(v^k)\rvert}.
+\end{equation}
+This is why the paired checks are the only ones that can clear a field other than the one they
+are named after, and why their journal lines name the instrument. Run \texttt{AG} at minute 225
+read $100.06\unit{V}$ on the supply against $10.00\unit{V}$ on the meter: a gap of
+$90.06\unit{V}$, and the supply was the one nowhere near its own usual $11\unit{V}$, so the
+supply's value was cleared. At minute 95 of the same run the supply read $11.20\unit{V}$ and the
+meter $1.16\unit{V}$; this time the meter was the stranger in its own column, so the meter's
+value went instead. Same check, same run, opposite verdicts, decided entirely by which column
+the reading was out of step with.
+
+For both paired checks a reading counts as judgeable only when \emph{both} instruments were
+written down. One instrument alone is a reading with nothing to check it against, so it is
+left alone.
+
+\subsection{The numbers the checks judge by}
+
+Every number a check compares against lives in one frozen dataclass called
+\texttt{Thresholds}, with the reason for each one in the comment beside it. Change a number
+there and every check that uses it changes with it. Table~\ref{tab:thresholds} is that file.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Every value in \texttt{thresholds.py}, and why it is what it is.}
+  \label{tab:thresholds}
+  \footnotesize
+  \begin{tabular}{@{}llp{0.48\textwidth}@{}}
+    \toprule
+    Name & Value & Why \\
+    \midrule
+    \texttt{fewest\_readings\_to\_judge} & 3
+      & Below this a check says nothing. With two readings each looks as odd as the other. \\
+    \texttt{most\_of\_a\_series\_removable} & 0.34
+      & The most of one series a check may clear. Needing more than a third means the file
+        is wrong, not the readings. Past half, the median starts following the bad values. \\
+    \texttt{impossible\_weight\_share} & 0.10
+      & How far a tank weight may sit from its tank's usual weight. The three known bad
+        weights are 90\% or more away; every good one is within 5\%. \\
+    \texttt{most\_ph\_change} & 1.5
+      & How far pH may move \ldots \\
+    \texttt{most\_ph\_change\_in\_minutes} & 15.0
+      & \ldots\ and over how long. A rate, because readings are 5 to 240 minutes apart. \\
+    \texttt{plausible\_ph} & $(2.0,\,12.0)$
+      & The range a pH reading must sit in whatever its neighbours say. These solutions cannot
+        be at pH 0.07. \\
+    \texttt{most\_temp\_change} & 2.0
+      & How far temperature may move \ldots \\
+    \texttt{most\_temp\_change\_in\_minutes} & 15.0
+      & \ldots\ and over how long. The fastest real change in the data is $0.9\unit{^\circ C}$
+        per quarter hour, so $2\unit{^\circ C}$ is a wide allowance. \\
+    \texttt{plausible\_temp\_c} & $(5.0,\,40.0)$
+      & The water sits at room temperature: every reading in the data is between 19.9 and
+        $23.0\unit{^\circ C}$. \\
+    \texttt{smallest\_jump\_share} & 0.10
+      & How big a conductivity jump must be to count, as a share of what the series usually
+        reads. Below a tenth, an ordinary wobble looks like a jump. \\
+    \texttt{comes\_back\_share} & 0.7
+      & How much of the jump the next reading must put back. At 0.7 this finds seven readings,
+        every one a digit too many or too few. \\
+    \texttt{impossible\_current\_share} & 0.10
+      & How far the supply current may sit from its run's usual reading. It is held to
+        within 2.2\% in nineteen of twenty-one runs. \\
+    \texttt{largest\_voltage\_gap\_v} & 1.0
+      & How far the two voltages may be apart. They agree to about $0.03\unit{V}$, so a gap
+        this wide means a digit was written down wrong. \\
+    \texttt{plausible\_current\_ratio} & $(0.62,\,1.6)$
+      & The band the supply-to-meter current ratio must sit in. The supply reads about a
+        seventh higher throughout, so a ratio and not a subtraction. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two of these are not any one check's. The fewest-readings number is handed only to the two
+\texttt{ValueFarFromTheMedian} checks. The removable share belongs to the inspector, and no
+check ever sees it.
+
+\subsection{The one line where a value is cleared}
+
+In the whole of the preprocessing there is exactly one place a reading's value is changed, in
+\texttt{Inspector.\_clear\_what\_it\_rejects}:
+
+\begin{quote}
+\begin{verbatim}
+reading, field_name, reason = worst
+journal.skip(reading, field_name, reason)
+setattr(reading, field_name, None)
+\end{verbatim}
+\end{quote}
+
+That is the point of the design. The journal write is the line before the clearing, in the same
+three lines, so there is no path through the code that clears a value without recording it.
+Checks cannot clear anything --- they only answer with what they found --- so there is nowhere
+else a value could quietly go missing. The journal entry takes its id and its record type from
+the record itself rather than from the call site, so the id in the report and the reading that
+was changed can never disagree.
+
+\subsection{Asking a check again after every value it rejects}
+
+A check is not run once over a series. It is asked for the single worst offender it can see;
+if it finds one, that value is journalled and cleared, and the check is asked again from the
+top. Two things make that the right loop.
+
+The first is simply that a check answers with one reading, not a list, so a series holding two
+bad values needs two passes. Run \texttt{AS}'s supply current held two: $0.46\unit{A}$ at
+minute 210 and $0.44\unit{A}$ at minute 480, against a level of $0.045\unit{A}$. One pass would
+have caught one of them.
+
+The second is that the level a check compares against is recomputed each time, so it is a
+better level once a bad value is gone. Every median, rate and ratio is worked out from the
+values still present, which is what makes it safe to judge the second-worst reading against a
+series the worst one has already left. How much it matters depends on the series. On
+\texttt{AS}'s current the median read $0.045\unit{A}$ on both passes, because 57 readings do
+not care about two of them. On run \texttt{AG}, where three voltage values went, the supply's
+median moved only from $11.215$ to $11.19\unit{V}$ --- but the blame did move: the first pass
+cleared the supply's $100.06\unit{V}$, and the two passes after it cleared the multimeter
+instead.
+
+The loop needs a stop. \texttt{Inspector.\_find\_clearing\_limit} sets how many times a single
+check may fire on a single series:
+\begin{equation}
+  \label{eq:clearing-limit}
+  \text{limit} = \max\!\left(1,\ \left\lfloor
+    n \times \texttt{most\_of\_a\_series\_removable} \right\rfloor \right),
+\end{equation}
+where $n$ is the number of judgeable readings in the series \emph{before} any clearing. With
+0.34, a pH series of three readings allows one removal, a typical tank series of seventeen
+allows five, and a typical power log of forty-one rows allows thirteen. The $\max(1, \cdot)$
+means a check can always fire at least once, even on the shortest series it will judge.
+
+Two honest consequences. The first is the reason for the number: beyond about half a series the
+median stops describing the good readings and starts describing the bad ones, at which point
+the check turns around and clears the readings that were right. Stopping at a third keeps well
+clear of that. If a third is not enough, the right conclusion is that the file is wrong, not
+that the readings are.
+
+The second is that \textbf{hitting the cap is silent}. The loop is a plain
+\texttt{for \_ in range(limit)}; when it runs out of iterations it simply ends. Nothing is
+journalled, nothing is printed, and the report will not tell you that a check still had
+complaints when it was cut off. On the data as it stands this never happens: re-running the
+step with the share raised to 0.5 and to 0.9 clears the same 27 values, so no check is being
+held back. But that is a property of today's data, not a guarantee, and it is the one place in
+this stage where something is left out without a line in the journal.
+
+\subsection{Dropping a run against skipping a value}
+
+The journal has two verbs, and they mean different things.
+
+A \textbf{drop} is about a whole run. The run leaves the list and nothing downstream sees it.
+A drop is written by \texttt{Preprocessor} itself, not by the step: after each step it compares
+the run codes it handed in with the run codes it got back, and journals every run that did not
+come back, with the step's own name as the reason. That is why a drop line reads
+\emph{no lab results at both ends} rather than a sentence --- the step name \emph{is} the
+reason, and the step does not have to remember to report anything.
+
+A \textbf{skip} is about one value. The reading stays in the run with everything else it
+carries, and one field is set to \texttt{None}.
+
+Setting the field to \texttt{None} rather than deleting the reading matters, for three reasons.
+A \texttt{TankReading} carries conductivity, pH, temperature and weight together, and may carry
+the lab sample drawn at that minute --- throwing the row away over one bad pH would throw away
+good values and possibly a lab result that cost money to get. \texttt{None} is already a legal
+state for every one of those fields, because the loader has to represent a blank cell in the
+CSV the same way, so nothing downstream needs new handling for a cleared value. And
+\texttt{Check.find\_judgeable\_readings} skips \texttt{None} values by definition, so a cleared
+value is invisible to every later check and to every later median without any bookkeeping: it
+is simply a reading that was never taken.
+
+\subsection{What it does to the real runs}
+
+Running \texttt{uv run limodel analyze} on the project data gives 32 journal lines before the
+results table: 27 skipped readings and 5 dropped runs. All 32 come from this stage --- the
+calculating and the fitting share the same journal and wrote nothing to it on this data. The
+loader hands over 21 runs carrying 1049 tank readings and 891 power-log rows, and the stage
+returns 16 runs --- the line the report prints is \texttt{using 16 of 21 runs}.
+
+Step 1 drops nothing, because all 21 runs are marked for use. All five drops come from step 3:
+runs \texttt{AU}, \texttt{AV}, \texttt{AW}, \texttt{AX} and \texttt{AY} do not have both metals
+reported at both ends of both tanks. Step 2 drops nothing by construction and accounts for all
+27 skips --- 13 tank values and 14 power-log values, out of 1940 readings.
+
+Table~\ref{tab:skips-by-check} is which check found them.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The 27 skipped values by the check that rejected them, and by the field cleared.}
+  \label{tab:skips-by-check}
+  \begin{tabular}{@{}lrlr@{}}
+    \toprule
+    Check & Values & Field cleared & Values \\
+    \midrule
+    \texttt{PairedValuesTooFarApart}     & 9 & \texttt{meter\_voltage\_v}   & 8 \\
+    \texttt{JumpThatComesBack}           & 7 & \texttt{conductivity\_us\_cm} & 7 \\
+    \texttt{ValueFarFromTheMedian}       & 6 & \texttt{ph}                  & 3 \\
+    \texttt{PairedValuesOutOfProportion} & 2 & \texttt{weight\_g}           & 3 \\
+    \texttt{ValueOutsideTheRange}        & 2 & \texttt{supply\_current\_a}  & 3 \\
+    \texttt{ValueMovingTooFast}          & 1 & \texttt{meter\_current\_ma}  & 2 \\
+                                         &   & \texttt{supply\_voltage\_v}  & 1 \\
+    \midrule
+    Total                                & 27 &                             & 27 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The journal lines themselves say what happened in plain words. Three of the real ones:
+
+\begin{quote}\footnotesize
+\begin{verbatim}
+skipped  reading  AJ:conc:0
+    weight 209.7 g is 1802.15 g away from the usual 2011.85 g
+skipped  reading  AS:dil:255
+    conductivity jumped to 173997 and the next reading
+    put 100% of it back
+skipped  reading  AG:225
+    the two voltage readings differ by 90.06 V, and the
+    supply's 100.06 V is unlike its own column
+\end{verbatim}
+\end{quote}
+
+Read them as three different shapes of mistake. The first is a decimal point in the wrong
+place: $209.7\unit{g}$ in a tank whose next recorded weight is $2098.9\unit{g}$ and whose usual
+weight is about $2012\unit{g}$. The second is a digit too many, and it is only findable because
+the series carries straight on afterwards: $17549.7$, then $173997.1$, then $17307.2$. Nothing
+here has to know what the right value was, only that the series left its track for exactly one
+reading. The third is a supply voltage of $100.06\unit{V}$ where the stack was running near
+$11\unit{V}$, and the multimeter stayed on its own track, so the supply column is the one that
+slipped.
+
+The id tells you where to look in the sheet. An id of \texttt{AJ:conc:0} means run
+\texttt{AJ}, concentrate tank, minute 0. An id of \texttt{AG:225} has no tank in it because it
+is a power-log row: run \texttt{AG}, minute 225. Every line is a cell to go and check, which is
+the whole purpose of keeping the journal rather than cleaning silently.

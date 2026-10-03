@@ -1,0 +1,368 @@
+\section{From a weight on a scale to a recovery percentage}
+
+Two different equations in this project both call themselves the recovery model, and they
+look nothing alike. Before anything else, here is which is which.
+
+The equation this report is about is fitted in \emph{real units}, with current density $J$ in
+$\mathrm{mA/cm^2}$ and the feed ratio $R$ in $\mathrm{mol/mol}$, and it keeps all five terms
+that these runs can settle:
+
+\begin{equation}
+  \text{recovery \%} = 33.0192 + 3.16999\,J - 14.4538\,R - 0.0954576\,J^{2} + 0.837907\,R^{2}
+  \label{eq:real-units-one-run}
+\end{equation}
+
+The equation \texttt{uv run limodel analyze} prints is not that one. The code logs both
+settings, codes them onto $-1\ldots1$, and then chooses its terms by forward stepwise
+selection, so it drops every term that does not lower the leave-one-out error. What it prints
+is
+
+\begin{equation}
+  \text{recovery \%} = 11.5776 - 15.627\,x_{2} + 6.08016\,x_{2}^{2},
+  \qquad x_{2} = \frac{\ln R - 1.395778}{1.039721}
+  \label{eq:coded-units-fit}
+\end{equation}
+
+Different units, different terms, and no current density at all in \eqref{eq:coded-units-fit}.
+The next section sets them side by side. What matters here is that
+\eqref{eq:real-units-one-run} and \eqref{eq:coded-units-fit} are fitted to \emph{the same nine
+numbers} on the left-hand side: nine measured recovery percentages, one per GO-10 run. Neither
+equation can be better than those nine numbers, so this section takes one of them apart
+completely. Run AE's recovery is $38.27\%$. Below is every reading that figure is made of and
+every multiplication done to it, so it can be checked on paper.
+
+\subsection{The rows AE's recovery is built from}
+
+Nothing in the data files is a recovery percentage. Four raw rows across three CSV files hold
+everything \eqref{eq:real-units-one-run} is fitted to for run AE, and Table~\ref{tab:ae-raw-rows}
+is all of them. The tares come from the run sheet, the weights from the balance under each
+tank, the concentrations from the lab.
+
+\begin{table}[htbp]
+\centering
+\caption{The raw rows behind AE's recovery, as they sit in the data files. The two tares are
+columns of AE's own row in \texttt{runs.csv}; each tank weight is a row of
+\texttt{tank\_readings.csv}; each concentration is a row of \texttt{samples.csv}.}
+\label{tab:ae-raw-rows}
+\begin{tabular}{llrr}
+\toprule
+file & column or row & minute 0 & minute 240 \\
+\midrule
+\texttt{runs.csv}          & \texttt{tare\_conc\_g}  & \multicolumn{2}{c}{$96.2\unit{g}$} \\
+                           & \texttt{tare\_dil\_g}   & \multicolumn{2}{c}{$111.5\unit{g}$} \\
+\addlinespace
+\texttt{tank\_readings.csv}& concentrate \texttt{weight\_g} & $2119.7\unit{g}$ & $2101.5\unit{g}$ \\
+                           & dilute \texttt{weight\_g}      & $2117.8\unit{g}$ & $2040.7\unit{g}$ \\
+\addlinespace
+\texttt{samples.csv}       & concentrate \texttt{li\_mg\_l}
+                           & $63.56\unit{mg/L}$ & $218.5\unit{mg/L}$ \\
+                           & dilute \texttt{li\_mg\_l}
+                           & $403.1\unit{mg/L}$ & $261.9\unit{mg/L}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two of the eight entries never reach recovery. The dilute's minute 240 weight and lithium are
+in the table only to be set aside: recovery divides by what the feed held \emph{before}
+anything moved, so only the dilute's first sampled minute is used. Its last minute is read by
+the balance gap, which is a diagnostic and is never fitted.
+
+\subsection{Weights become litres}
+
+No instrument measured a volume. Each tank sat on a balance for the whole run, so the litres
+are inferred: the balance reading less that tank's own empty weight, divided by
+$1000\unit{g/L}$. \texttt{VolumeInATank.find\_litres} does this, and the divisor is
+\texttt{SOLUTION\_\allowbreak G\_\allowbreak PER\_\allowbreak L} $= 1000.0$ in \texttt{calculate/\allowbreak constants.py}. That constant is a
+decision, not a measurement. These are dilute salt solutions, so a litre weighs a kilogram
+closely enough that the balance can be read as a volume, and the alternative --- a density per
+tank per minute --- was never measured.
+
+The concentrate is weighed at both ends, so it needs two volumes:
+
+\begin{align}
+  V_{\mathrm{conc}}(0)   &= \frac{2119.7 - 96.2}{1000} = 2.0235\unit{L} \label{eq:v-conc-0} \\
+  V_{\mathrm{conc}}(240) &= \frac{2101.5 - 96.2}{1000} = 2.0053\unit{L} \label{eq:v-conc-240}
+\end{align}
+
+The tare is looked up by tank name through \texttt{TARE\_FIELD\_BY\_TANK}, which maps
+\texttt{conc} to the column \texttt{tare\_conc\_g}; \texttt{AmountThatCrossed.find\_ends} is
+what reads it off the run. The two volumes differ by $18.2\unit{g}$ of liquid, nine parts in a
+thousand. That is small, and it is exactly why the volume is recomputed at each sampled minute
+instead of once: a concentration at minute 240 compared against a minute 0 volume would be
+comparing two different quantities of liquid.
+
+\subsection{Litres and a lab result become milligrams}
+
+A concentration on its own says nothing that can be compared across a run, because the tanks
+gain and lose liquid all the way through. Only concentration times volume --- an absolute
+amount --- can be subtracted from one minute to the next.
+\texttt{AmountInATank.find\_milligrams} does the multiplication, taking the lithium column
+name from \texttt{LITHIUM.field\_name}, which is \texttt{li\_mg\_l}:
+
+\begin{align}
+  m_{\mathrm{conc}}(0)   &= 63.56 \times 2.0235 = 128.61366\unit{mg} \label{eq:mg-conc-0} \\
+  m_{\mathrm{conc}}(240) &= 218.5 \times 2.0053 = 438.15805\unit{mg} \label{eq:mg-conc-240}
+\end{align}
+
+The concentrate did not start empty of lithium. It was made up as $0.5\unit{g/L}$ LiCl, so
+\eqref{eq:mg-conc-0} is not a rounding artefact and cannot be skipped --- about $29\%$ of what
+the concentrate finished with was already in it. What crossed the membranes is the difference,
+and \texttt{AmountThatCrossed.\allowbreak find\_milligrams} is the subtraction:
+
+\begin{equation}
+  \Delta m_{\mathrm{conc}} = 438.15805 - 128.61366 = 309.54439\unit{mg}
+  \label{eq:crossed}
+\end{equation}
+
+The two ends are picked by minute and not by row order.
+In \texttt{AmountThatCrossed}, the method
+\texttt{find\_amounts\_by\_minute} builds a dictionary keyed on the minute, keeping only
+the minutes that have both a weight and a lab result, and \texttt{find\_ends} then sorts
+those keys and takes the first and the last. The readings arrive in no guaranteed order, and
+most minutes of AE have a weight but no sample, so taking the first and last \emph{rows}
+would pick up the wrong pair.
+
+\subsection{The feed side, and the percentage}
+
+The denominator is the whole prize: all the lithium the feed held when the run began. It is
+built the same way, from the dilute tank's own tare and its first sampled minute:
+
+\begin{align}
+  V_{\mathrm{dil}}(0) &= \frac{2117.8 - 111.5}{1000} = 2.0063\unit{L} \label{eq:v-dil-0} \\
+  m_{\mathrm{dil}}(0) &= 403.1 \times 2.0063 = 808.73953\unit{mg} \label{eq:mg-dil-0}
+\end{align}
+
+\texttt{LithiumRecovery.find\_percent} then divides \eqref{eq:crossed} by
+\eqref{eq:mg-dil-0}:
+
+\begin{equation}
+  \text{recovery \%} = 100 \times \frac{309.54439}{808.73953} = 38.2749\%
+  \label{eq:recovery}
+\end{equation}
+
+Three things about \eqref{eq:recovery} were choices. First, the denominator is the dilute's
+\emph{first} sampled minute and never its last: measured against what the feed ended with,
+AE would read $61.3\%$, which would be a share of what was left rather than a recovery.
+Second, the numerator is what the \emph{concentrate gained}, not what the dilute lost --- the
+concentrate is where the product is, and the dilute also loses lithium to the rinse and to the
+sample bottles. Those two numbers disagree by a measurable amount, and the gap between them is
+reported separately as a diagnostic rather than averaged away. Third, milligrams stand on both
+sides of the division, so lithium's molar mass cancels and the code never converts to moles
+here; recovery is the one quantity in the project that needs no molar mass at all.
+
+Figure~\ref{fig:ae-recovery-chain} is the whole chain with these numbers on it.
+
+\begin{figure}[htbp]
+\centering
+\footnotesize
+\begin{tikzpicture}[
+  every node/.style={font=\footnotesize},
+  box/.style={draw, rounded corners, align=center, text width=2.0cm, inner sep=3pt,
+              minimum height=1.0cm},
+  lbl/.style={font=\scriptsize, align=center, inner sep=1pt},
+  arr/.style={-Stealth, thick}
+]
+
+\node[box] (cw0) at (0,2.5) {concentrate\\min 0\\$2119.7\unit{g}$};
+\node[box] (cw4) at (0,0.4) {concentrate\\min 240\\$2101.5\unit{g}$};
+\node[box] (dw0) at (0,-2.3) {dilute\\min 0\\$2117.8\unit{g}$};
+
+\node[box] (cv0) at (4.2,2.5) {$2.0235\unit{L}$};
+\node[box] (cv4) at (4.2,0.4) {$2.0053\unit{L}$};
+\node[box] (dv0) at (4.2,-2.3) {$2.0063\unit{L}$};
+
+\node[box] (cm0) at (8.4,2.5) {$128.61\unit{mg}$\\lithium};
+\node[box] (cm4) at (8.4,0.4) {$438.16\unit{mg}$\\lithium};
+\node[box] (dm0) at (8.4,-2.3) {$808.74\unit{mg}$\\lithium};
+
+\node[box, text width=2.3cm] (cross) at (12.7,1.45)
+  {crossed\\$438.16 - 128.61$\\$= 309.54\unit{mg}$};
+\node[box, text width=2.2cm, very thick] (rec) at (12.7,-2.3) {recovery\\$38.27\%$};
+
+\draw[arr] (cw0) -- node[lbl, above] {less $96.2$\\$\div\,1000$} (cv0);
+\draw[arr] (cw4) -- node[lbl, above] {less $96.2$\\$\div\,1000$} (cv4);
+\draw[arr] (dw0) -- node[lbl, above] {less $111.5$\\$\div\,1000$} (dv0);
+
+\draw[arr] (cv0) -- node[lbl, above] {$\times\,63.56$} (cm0);
+\draw[arr] (cv4) -- node[lbl, above] {$\times\,218.5$} (cm4);
+\draw[arr] (dv0) -- node[lbl, above] {$\times\,403.1$} (dm0);
+
+\draw[arr] (cm4) -- (cross);
+\draw[arr] (cm0) -- (cross);
+\draw[arr] (cross) -- node[lbl, right] {$\div\,808.74$\\$\times\,100$} (rec);
+\draw[arr] (dm0) -- (rec);
+
+\node[lbl, anchor=west] at (-1.35,3.7) {\textbf{balance}};
+\node[lbl, anchor=west] at (2.85,3.7) {\textbf{litres}};
+\node[lbl, anchor=west] at (7.05,3.7) {\textbf{milligrams}};
+\node[lbl, anchor=west] at (11.3,3.7) {\textbf{outcome}};
+
+\end{tikzpicture}
+\caption{Run AE's recovery, every step with its own number. The tares come from
+\texttt{runs.csv}, the weights from \texttt{tank\_readings.csv}, the multipliers from the
+lithium column of \texttt{samples.csv}. Left to right the classes are
+\texttt{VolumeInATank}, \texttt{AmountInATank}, \texttt{AmountThatCrossed} and
+\texttt{LithiumRecovery}.}
+\label{fig:ae-recovery-chain}
+\end{figure}
+
+\subsection{Permselectivity, which needs magnesium and the charge}
+
+Recovery only asks how much lithium moved. Permselectivity asks whether the stack
+\emph{preferred} lithium, which takes magnesium as well, and it has one wrinkle recovery does
+not: it is about charge, not about ions.
+
+The magnesium that crossed comes through exactly the same chain. The only change is the
+column read, \texttt{MAGNESIUM.field\_name}, which is \texttt{mg\_mg\_l}:
+
+\begin{equation}
+  \Delta m_{\mathrm{Mg}} = 130.0 \times 2.0053 \;-\; 2.974 \times 2.0235
+  = 260.689 - 6.01789 = 254.67111\unit{mg}
+  \label{eq:crossed-mg}
+\end{equation}
+
+\texttt{TransportNumbers.find\_numbers} then converts both to millimoles and weights each by
+the charge its own ion carries --- \texttt{Metal.charge}, which is $1$ for lithium and $2$ for
+magnesium. Magnesium counts twice because a transport number is a share of the charge the
+current carried, and one $\mathrm{Mg}^{2+}$ ion carries two charges across the membrane where
+one $\mathrm{Li}^{+}$ carries one. The current is what was paid for, so the current is what
+gets divided up:
+
+\begin{align}
+  q_{\mathrm{Li}} &= 1 \times \frac{309.54439}{6.94}   = 44.60294 \label{eq:q-li} \\
+  q_{\mathrm{Mg}} &= 2 \times \frac{254.67111}{24.305} = 20.95627 \label{eq:q-mg} \\
+  t_{\mathrm{Li}} &= \frac{44.60294}{65.55921} = 0.680346,
+  \qquad t_{\mathrm{Mg}} = \frac{20.95627}{65.55921} = 0.319654 \label{eq:transport}
+\end{align}
+
+So lithium carried $68\%$ of the charge into the concentrate. On its own that number says
+little, because AE's feed held more lithium than magnesium in molar terms and a stack with no
+preference at all would still move mostly lithium. The feed it was offered has to be divided
+out. \texttt{FeedRatio.find\_li\_over\_mg\_in\_the\_dilute} takes the first dilute minute the
+lab reported both metals for, in millimoles. That minute is AE's minute 0, where the dilute
+held $808.73953\unit{mg}$ of lithium by \eqref{eq:mg-dil-0} and
+$1657 \times 2.0063 = 3324.4391\unit{mg}$ of magnesium:
+
+\begin{equation}
+  \frac{c_{\mathrm{Li}}}{c_{\mathrm{Mg}}}
+  = \frac{808.73953 / 6.94}{3324.4391 / 24.305}
+  = \frac{116.53307}{136.78005} = 0.851974
+  \label{eq:feed-ratio}
+\end{equation}
+
+Both amounts are from one tank at one minute, so the litres cancel and the milligrams carry
+the ratio --- which is why \eqref{eq:feed-ratio} divides milligrams-over-molar-mass directly.
+\texttt{Permselectivity.\allowbreak find\_value} finishes it:
+
+\begin{equation}
+  P = \frac{t_{\mathrm{Li}} / t_{\mathrm{Mg}}}{c_{\mathrm{Li}} / c_{\mathrm{Mg}}}
+    = \frac{0.680346 / 0.319654}{0.851974}
+    = \frac{2.128381}{0.851974} = 2.498176
+  \label{eq:permselectivity}
+\end{equation}
+
+\subsubsection*{Why no preference is $0.5$ and not $1$}
+
+Dividing by the feed ratio is what lets runs fed different mixtures be compared, and it fixes
+the neutral point at $0.5$ whatever the feed was. The reason is the factor of two in
+\eqref{eq:q-mg}, which survives the division.
+
+Suppose the stack had no preference, so the ions crossed in proportion to the moles offered:
+$n_{\mathrm{Li}} / n_{\mathrm{Mg}} = c_{\mathrm{Li}} / c_{\mathrm{Mg}}$. The transport numbers
+are charge shares, so
+
+\begin{equation}
+  \frac{t_{\mathrm{Li}}}{t_{\mathrm{Mg}}}
+  = \frac{1 \cdot n_{\mathrm{Li}}}{2 \cdot n_{\mathrm{Mg}}}
+  = \frac{1}{2}\,\frac{c_{\mathrm{Li}}}{c_{\mathrm{Mg}}},
+  \qquad\text{so}\qquad
+  P = \frac{\tfrac{1}{2}\,(c_{\mathrm{Li}} / c_{\mathrm{Mg}})}{c_{\mathrm{Li}} / c_{\mathrm{Mg}}}
+    = \frac{1}{2}
+  \label{eq:neutral-point}
+\end{equation}
+
+The feed ratio cancels completely, so $0.5$ is the neutral point for every run regardless of
+what it was fed. For AE, no preference would have meant
+$t_{\mathrm{Li}} / t_{\mathrm{Mg}} = 0.851974 / 2 = 0.425987$; the stack actually reached
+$2.128381$, about five times that, hence $P = 2.498$ against a neutral $0.5$. Read against $1$
+instead, the same stack would look only $2.5$ times selective rather than $5$, so the neutral
+point has to be stated with the number.
+
+One more thing about \eqref{eq:feed-ratio}: it is the \emph{measured} feed ratio, from the lab
+result on the dilute sample. It is not the ratio the run was set up at. AE was made up at
+$400\unit{mg/L}$ lithium and $2000\unit{mg/L}$ magnesium, which is
+$(2000/24.305) / (400/6.94) = 1.427690$ mol magnesium per mole lithium, or $0.700432$ the
+other way up --- not $0.851974$. \texttt{FeedRatio} keeps the two apart by name,
+\texttt{find\_li\_over\_mg\_in\_the\_dilute} against
+\texttt{find\_mg\_over\_li\_from\_the\_setup}, because they answer different questions. The
+measured one is what permselectivity divides by, since it is the mixture the membrane actually
+saw. The set-up one is the design column $R$ of \eqref{eq:real-units-one-run}, since a design
+column has to be a setting the bench chose and can choose again, not something a lab result
+moves afterwards.
+
+\subsection{What else a \texttt{Result} carries}
+
+\texttt{Calculator.find\_results} builds one \texttt{Result} per run, and it drops a run only
+when permselectivity or recovery could not be worked out --- those two are what the model is
+fitted to, so a run without them has nothing to contribute. The rest may be \texttt{None} on a
+run that is otherwise sound, which is why they are reported at the end rather than used to
+drop anything. Table~\ref{tab:result-fields} names each field, the class behind it, and what
+AE came out as.
+
+\begin{table}[htbp]
+\centering
+\caption{Every field of a \texttt{Result} beyond the two derived above, with the class that
+produces it and AE's value. The last five are diagnostics: read by a human judging a run,
+never fitted.}
+\label{tab:result-fields}
+\begin{tabular}{llr}
+\toprule
+field & class and method & AE \\
+\midrule
+\texttt{current\_density\_ma\_cm2} & \texttt{CurrentDensity.find\_ma\_per\_cm2} & $13.6667$ \\
+\texttt{feed\_mg\_li\_ratio}
+  & \texttt{FeedRatio.find\_mg\_over\_li\_from\_the\_setup} & $1.42769$ \\
+\addlinespace
+\texttt{highest\_voltage\_v} & \texttt{StackVoltage.find\_highest\_volts} & $16.0\unit{V}$ \\
+\texttt{charge\_passed\_mah\_cm2} & \texttt{ChargeThatPassed.find\_mah\_per\_cm2} & $54.5625$ \\
+\texttt{energy\_per\_mol\_li\_wh} & \texttt{EnergyPerMoleOfLithium.find\_watt\_hours} & $91.92$ \\
+\texttt{li\_balance\_gap\_pct} & \texttt{BalanceGap.find\_percent} & $-19.64\%$ \\
+\texttt{mg\_balance\_gap\_pct} & \texttt{BalanceGap.find\_percent} & $35.00\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Four of these are worth a line on why they are shaped the way they are.
+
+\textbf{Current density} is the \emph{median} supply current over the power log, times $1000$
+for milliamps, divided by the membrane area. AE's power log carries a current at 30
+minutes, 25 of them $0.082\unit{A}$, so $0.082 \times 1000 / 6 = 13.6667\unit{mA/cm^2}$.
+The median and not the
+mean, because a run holds one current all the way through and a single misread minute should
+not shift the number that labels the whole run. This is the $J$ of
+\eqref{eq:real-units-one-run}.
+
+\textbf{Highest voltage} is the largest voltage the log ever recorded, which is what the
+$20\unit{V}$ ceiling is checked against. \texttt{StackVoltage} also offers
+\texttt{find\_starting\_volts}, the voltage at the earliest logged minute, which is what the
+stack asked for before anything had crossed.
+
+\textbf{Charge passed} and \textbf{energy per mole} are both areas under the power log, found
+by the trapezium rule between consecutive logged minutes, because no meter totalled either
+one. AE integrates to $1178.55\unit{C}$, which over $6\unit{cm^2}$ is
+$54.5625\unit{mAh/cm^2}$, and to $14759.78\unit{J}$, which against the
+$309.54\unit{mg} / 6.94 = 44.6\unit{mmol}$ of lithium that crossed is
+$91.92\unit{Wh}$ per mole. Per mole of lithium rather than per hour or per litre, so a short
+run and a long one can be set beside each other.
+
+\textbf{The balance gaps} are the honest confession of the chain above. Each one is the
+percent of what the dilute lost that was not found again in the concentrate plus the rinse.
+AE's lithium gap is $-19.64\%$: more lithium was found than the dilute appears to have lost,
+which is a measurement inconsistency and not a physical one. It is reported and never
+corrected for, and no quantity in this project is adjusted by it. When the rinse was never
+weighed it counts as zero gained, which can only make the gap look worse --- the honest
+direction for a diagnostic to be wrong in.
+
+With all of that, AE reduces to one row the fitting can see: $J = 13.6667$, $R = 1.42769$,
+recovery $= 38.27\%$, permselectivity $= 2.498$. Nine such rows are everything
+\eqref{eq:real-units-one-run} and \eqref{eq:coded-units-fit} were fitted to.
