@@ -10,14 +10,14 @@ See [polynomial.md](polynomial.md) for the equation itself and
 
 | Step | Status |
 |---|---|
-| 1. One row of numbers per run | implemented; to be checked against this plan |
+| 1. One row of numbers per run | to do |
 | 2. Look at the data before fitting | partly done |
-| 3. Measure the scatter between repeat runs | implemented; to be checked against this plan |
-| 4. Prepare the inputs | implemented; to be checked against this plan |
+| 3. Measure the scatter between repeat runs | to do |
+| 4. Prepare the inputs | to do |
 | 5. Fit a ladder of candidate models and compare them | **next — the main gap** |
 | 6. Check the chosen model | to do |
 | 7. Compare with a flexible model | planned |
-| 8. Find the best setting under the limits | implemented; to be checked against this plan |
+| 8. Find the best setting under the limits | to do |
 | 9. Test on runs the model has never seen | waits for AV–AY lab results |
 
 ---
@@ -62,12 +62,12 @@ why the building blocks come first.
 |---|---|---|
 | Current density, $`i`$ | input | average current through the stack (`stack_readings.csv` → `meter_current_ma`) and membrane area (`runs.csv` → `area_cm2`); no building block needed |
 | Mg/Li feed ratio, $`R`$ | input | planned feed concentrations (`runs.csv` → `li_feed_mg_l`, `mg_feed_mg_l`); no building block needed |
-| Charge per lithium offered, $`q`$ | input | **charge passed**, the number of cell pairs (`runs.csv` → `cell_pairs`), and the lithium in the diluate at the start (**metal in a tank** → **moles**) |
-| Permselectivity, $`P`$ | output | the lithium and magnesium that crossed into the concentrate (**metal that crossed** → **moles**), and the diluate's concentrations at its first and last samples |
-| Lithium recovery | output | the lithium that crossed into the concentrate (**metal that crossed**), and the lithium in the diluate at the start (**metal in a tank**) |
+| Charge per lithium offered, $`q`$ | input | **[charge passed](#building-blocks)**, the number of cell pairs (`runs.csv` → `cell_pairs`), and the lithium in the diluate at the start (**[metal in a tank](#building-blocks)** → **[moles](#building-blocks)**) |
+| Permselectivity, $`P`$ | output | the lithium and magnesium that crossed into the concentrate (**[metal that crossed](#building-blocks)** → **[moles](#building-blocks)**), and the diluate's concentrations at its first and last samples |
+| Lithium recovery | output | the lithium that crossed into the concentrate (**[metal that crossed](#building-blocks)**), and the lithium in the diluate at the start (**[metal in a tank](#building-blocks)**) |
 | Highest stack voltage, $`U_{\max}`$ | output | stack voltage (`stack_readings.csv` → `meter_voltage_v`); no building block needed |
 
-The building blocks in **bold** are defined in the next table. Each of the six numbers then has its
+The building blocks in **bold** link to the table that defines them, in the next section. Each of the six numbers then has its
 own section below, under *Inputs* and *Outputs*.
 
 ### Which current
@@ -81,13 +81,13 @@ is calculated from the multimeter column F, and the supply column D is never use
 
 ### Building blocks
 
-| Quantity | Equation | Meaning | Where the values are in the CSV files | Used by |
+| Quantity | Equation | Meaning | Where the values are (CSV files and models) | Used by |
 |---|---|---|---|---|
-| <a id="volume-in-a-tank"></a>Volume in a tank | $`\displaystyle V = \frac{w - w_0}{1000}`$ (L) | balance reading less the empty tank, taking 1 g = 1 mL | $`w`$: `tank_readings.csv` → `weight_g`; $`w_0`$: `runs.csv` → `tare_conc_g`, `tare_dil_g` or `tare_rinse_g`, matching the row's `tank`<br>Workbook: columns AJ (concentrate) and AR (diluate) | [Metal in a tank](#metal-in-a-tank) (*V*)|
-| <a id="metal-in-a-tank"></a>Metal in a tank | $`\displaystyle m = c\,V`$ (mg) | lab concentration (mg/L) times volume; concentration alone means little because the tanks gain and lose water all run | $`c`$: `samples.csv` → `li_mg_l` or `mg_mg_l`, joined to its tank reading on `run_code`, `minute`, `tank`; $`V`$: the row above<br>Workbook: e.g. `AL24*AJ24` | [Metal that crossed](#metal-that-crossed) (both ends)<br>[Charge per lithium offered](#charge-per-lithium-offered) (lithium offered)<br>[Lithium recovery](#lithium-recovery) (lithium at the start)|
-| <a id="metal-that-crossed"></a>Metal that crossed | $`\displaystyle \Delta m = m_{\text{end}} - m_{\text{start}}`$ | the change between the first and last sampled minute | the earliest and latest `minute` of that run and tank that has both a sample in `samples.csv` and a weight in `tank_readings.csv`<br>Workbook: `AL24*AJ24 - AL8*AJ8` (lithium, concentrate) | [Moles](#moles)<br>[Permselectivity](#permselectivity) (moles gained by the concentrate)<br>[Lithium recovery](#lithium-recovery) (lithium gained)|
-| <a id="moles"></a>Moles | $`\displaystyle n = \Delta m / M`$ | $`M`$ = 6.94 g/mol (Li), 24.305 g/mol (Mg) | none: the molar masses are constants<br>Workbook: columns BE (Li) and BF (Mg), in mol | [Permselectivity](#permselectivity) (*n*<sub>Li</sub>, *n*<sub>Mg</sub>)<br>[Charge per lithium offered](#charge-per-lithium-offered) (*n*<sub>Li,offered</sub>)|
-| <a id="charge-passed"></a>Charge passed | $`\displaystyle Q = \sum_k \frac{1}{2}\,(I_k + I_{k+1})\,(\tau_{k+1} - \tau_k)`$ | area under the current–time curve, in coulombs, with $`I_k`$ the current through the stack and $`\tau_k`$ the time of reading $`k`$ in seconds; no meter totals it, so it is summed from the power log, read mostly every 5 minutes. See [How the charge is added up](#how-the-charge-is-added-up) below. | $`I`$: `stack_readings.csv` → `meter_current_ma`, ÷ 1000 to amps; $`\tau`$: `stack_readings.csv` → `minute` × 60<br>Workbook: column I, total in I54 | [Charge per lithium offered](#charge-per-lithium-offered) (*Q*)|
+| Volume in a tank | $`\displaystyle V = \frac{w - w_0}{1000}`$ (L) | balance reading less the empty tank, taking 1 g = 1 mL | $`w`$: CSV `tank_readings.csv` → `weight_g`; Model `TankReading.weight_g`<br> $`w_0`$: CSV `runs.csv` → `tare_conc_g`, `tare_dil_g` or `tare_rinse_g`, matching the reading's `tank`; Model `Run.tare_conc_g`, `Run.tare_dil_g`, `Run.tare_rinse_g`<br>Workbook: columns AJ (concentrate) and AR (diluate) | [Metal in a tank](#building-blocks) (*V*) |
+| Metal in a tank | $`\displaystyle m = c\,V`$ (mg) | lab concentration (mg/L) times volume; concentration alone means little because the tanks gain and lose water all run | $`c`$: CSV `samples.csv` → `li_mg_l` or `mg_mg_l`, joined to its tank reading on `run_code`, `minute`, `tank`; Model `Sample.li_mg_l`, `Sample.mg_mg_l`, reached as `TankReading.sample`<br> $`V`$: the row above<br>Workbook: e.g. `AL24*AJ24` | [Metal that crossed](#building-blocks) (both ends)<br>[Charge per lithium offered](#charge-per-lithium-offered) (lithium offered)<br>[Lithium recovery](#lithium-recovery) (lithium at the start) |
+| Metal that crossed | $`\displaystyle \Delta m = m_{\text{end}} - m_{\text{start}}`$ | the change between the first and last sampled minute | the earliest and latest `minute` of that run and tank with both a sample and a weight: CSV `samples.csv` and `tank_readings.csv` → `minute`; Model `TankReading.minute`, over `Run.tank_readings`<br>Workbook: `AL24*AJ24 - AL8*AJ8` (lithium, concentrate) | [Moles](#building-blocks)<br>[Permselectivity](#permselectivity) (moles gained by the concentrate)<br>[Lithium recovery](#lithium-recovery) (lithium gained) |
+| Moles | $`\displaystyle n = \Delta m / M`$ | $`M`$ = 6.94 g/mol (Li), 24.305 g/mol (Mg) | none: the molar masses are constants<br>Workbook: columns BE (Li) and BF (Mg), in mol | [Permselectivity](#permselectivity) (*n*<sub>Li</sub>, *n*<sub>Mg</sub>)<br>[Charge per lithium offered](#charge-per-lithium-offered) (*n*<sub>Li,offered</sub>) |
+| Charge passed | $`\displaystyle Q = \sum_k \frac{1}{2}\,(I_k + I_{k+1})\,(\tau_{k+1} - \tau_k)`$ | area under the current–time curve, in coulombs, with $`I_k`$ the current through the stack and $`\tau_k`$ the time of reading $`k`$ in seconds; no meter totals it, so it is summed from the power log, read mostly every 5 minutes. See [How the charge is added up](#how-the-charge-is-added-up) below. | $`I`$: CSV `stack_readings.csv` → `meter_current_ma`, ÷ 1000 to amps; Model `StackReading.meter_current_ma`<br> $`\tau`$: CSV `stack_readings.csv` → `minute` × 60; Model `StackReading.minute`, over `Run.stack_readings`<br>Workbook: column I, total in I54 | [Charge per lithium offered](#charge-per-lithium-offered) (*Q*) |
 
 #### How the charge is added up
 
@@ -134,7 +134,8 @@ Under each equation, every variable is traced to where it comes from: a CSV colu
 attribute that holds it, a constant, or a link to the calculation that produces it. The model
 classes are in `src/limodel/models/`.
 
-<a id="current-density"></a>
+#### Current density
+
 **Current density, $`i`$ (mA/cm²)**
 
 $$\displaystyle i = \frac{\bar I \times 1000}{A}, \qquad A = 6\ \text{cm}^2$$
@@ -155,7 +156,8 @@ the membrane can run short, and magnesium then carries more of the current.
 Workbook: column H, `=G/I2`, with G the `AVERAGE` of the multimeter column F, hour by hour. For run
 AE that is 12.11 mA/cm² in the first hour.
 
-<a id="feed-ratio"></a>
+#### Feed ratio
+
 **Mg/Li feed ratio, $`R`$ (mol/mol)**
 
 $$\displaystyle R = \frac{c^{\text{feed}}_{\text{Mg}} / 24.305}{c^{\text{feed}}_{\text{Li}} / 6.94}$$
@@ -181,7 +183,8 @@ the model the two are interchangeable: the molar ratio is the mass ratio × 6.94
 $`\ln R`$ only shifts by a constant, and coding to −1…+1 (Step 4) removes the shift. The fit is
 identical either way; only the axis labels change.
 
-<a id="charge-per-lithium-offered"></a>
+#### Charge per lithium offered
+
 **Charge per lithium offered, $`q`$ (dimensionless)**
 
 $$\displaystyle q = \frac{Q\,N / F}{n_{\text{Li,offered}}}, \qquad N = 10 \text{ cell pairs}, \quad F = 96\,485\ \text{C/mol}$$
@@ -190,10 +193,10 @@ Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`Q`$ | total charge passed over the run, in C | calculation: [Charge passed](#charge-passed) |
+| $`Q`$ | total charge passed over the run, in C | calculation: [Charge passed](#building-blocks) |
 | $`N`$ | number of cell pairs | CSV: `runs.csv` → `cell_pairs`<br>Model: `Run.cell_pairs` |
 | $`F`$ | Faraday constant, 96 485 C/mol | constant |
-| $`n_{\text{Li,offered}}`$ | lithium in the diluate at its first sampled minute, in mol | calculation: [Metal in a tank](#metal-in-a-tank) for the `dil` tank at its first sampled minute, turned into moles as in [Moles](#moles) |
+| $`n_{\text{Li,offered}}`$ | lithium in the diluate at its first sampled minute, in mol | calculation: [Metal in a tank](#building-blocks) for the `dil` tank at its first sampled minute, turned into moles as in [Moles](#building-blocks) |
 
 
 $`Q N / F`$ is the moles of charge moved across all $`N`$ membranes; $`n_{\text{Li,offered}}`$ is the lithium the
@@ -254,7 +257,8 @@ summed over the run), and the lithium the diluate started with (`AT8*AR8`).
 
 ### Outputs: what is measured
 
-<a id="permselectivity"></a>
+#### Permselectivity
+
 **Permselectivity, $`P`$ — maximised**
 
 $$\displaystyle P = \frac{n_{\text{Li}} / n_{\text{Mg}}}{\bar c_{\text{Li}} / \bar c_{\text{Mg}}}$$
@@ -265,7 +269,7 @@ Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`n_{\text{Li}}`$, $`n_{\text{Mg}}`$ | moles of each metal the concentrate gained over the run | calculation: [Metal that crossed](#metal-that-crossed) for the `conc` tank, then [Moles](#moles) |
+| $`n_{\text{Li}}`$, $`n_{\text{Mg}}`$ | moles of each metal the concentrate gained over the run | calculation: [Metal that crossed](#building-blocks) for the `conc` tank, then [Moles](#building-blocks) |
 | $`\bar c_{\text{Li}}`$, $`\bar c_{\text{Mg}}`$ | each metal's average concentration in the diluate over the run, in mmol/L: the log-mean of its start and end values (when the two are equal, the start value) | calculation: the second equation above |
 | $`c_{\text{start}}`$, $`c_{\text{end}}`$ | the metal's concentration in the diluate's first and last samples, divided by its molar mass (6.94 for Li, 24.305 for Mg) | CSV: `samples.csv` → `li_mg_l`, `mg_mg_l`, tank `dil`<br>Model: `Sample.li_mg_l`, `Sample.mg_mg_l` (reached as `TankReading.sample`) |
 
@@ -289,7 +293,8 @@ is the reciprocal of P. It averages the start and end concentrations arithmetica
 logarithmically, and its wording names the concentrate-in and concentrate-out streams rather than
 the diluate. For run AE the arithmetic mean gives P = 5.71 against the workbook's 5.79.
 
-<a id="lithium-recovery"></a>
+#### Lithium recovery
+
 **Lithium recovery — gate, at least 35 %**
 
 $$\displaystyle \text{recovery} = 100 \times \frac{\Delta m^{\text{conc}}_{\text{Li}}}{m^{\text{dil}}_{\text{Li,start}}}\ \%$$
@@ -298,8 +303,8 @@ Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\Delta m^{\text{conc}}_{\text{Li}}`$ | milligrams of lithium the concentrate gained | calculation: [Metal that crossed](#metal-that-crossed) for the `conc` tank |
-| $`m^{\text{dil}}_{\text{Li,start}}`$ | milligrams of lithium in the diluate at its first sampled minute | calculation: [Metal in a tank](#metal-in-a-tank) for the `dil` tank at its first sampled minute |
+| $`\Delta m^{\text{conc}}_{\text{Li}}`$ | milligrams of lithium the concentrate gained | calculation: [Metal that crossed](#building-blocks) for the `conc` tank |
+| $`m^{\text{dil}}_{\text{Li,start}}`$ | milligrams of lithium in the diluate at its first sampled minute | calculation: [Metal in a tank](#building-blocks) for the `dil` tank at its first sampled minute |
 | 100 | turns the fraction into a percent | fixed |
 
 
@@ -314,7 +319,8 @@ $`(C_{\text{out}} - C_{\text{in}})/C_{\text{in}} \times 100`$ on the concentrate
 concentration: how much the concentrate was enriched, not what share of the feed's lithium was
 collected.
 
-<a id="highest-stack-voltage"></a>
+#### Highest stack voltage
+
 **Highest stack voltage, $`U_{\max}`$ — gate, at most 20 V**
 
 $$\displaystyle U_{\max} = \max_k U_k$$
