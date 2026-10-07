@@ -1,0 +1,319 @@
+\section{One run, start to finish}
+
+Every formula in this guide is small. What is easy to lose is the chain: a balance reading
+becomes litres, litres and a lab concentration become milligrams, two sets of milligrams
+become a crossing, and only then does anything look like a result. This section carries run
+AE through that chain with the numbers the code actually produces, so any step can be checked
+on paper. Run AG follows in a table beside it.
+
+Every figure below came from running the code, not from reading the formulas. A reader who
+wants to repeat it can print any intermediate value the same way:
+
+\begin{quote}
+\texttt{uv run python -c "... AmountThatCrossed} \\
+\texttt{.find\_milligrams(run, CONCENTRATE, LITHIUM)"}
+\end{quote}
+
+\subsection{What AE arrived with}
+
+AE used a GO-10 cation membrane over $6.0\unit{cm^2}$, fed at $400\unit{mg/L}$ lithium and
+$2000\unit{mg/L}$ magnesium, and ran for 240 minutes. Only the readings in
+Table~\ref{tab:ae-inputs} reach the two outcomes the model is fitted to. Everything else in
+AE's eighty-odd rows is there for the checks, for the plots, or for nothing at all.
+
+\begin{table}[htbp]
+\centering
+\caption{The readings AE's result is built from. The tares come from the run sheet; the
+weights from the balance under each tank; the concentrations from the lab.}
+\label{tab:ae-inputs}
+\begin{tabular}{llrr}
+\toprule
+ & & minute 0 & minute 240 \\
+\midrule
+Concentrate & tare & \multicolumn{2}{c}{$96.2\unit{g}$} \\
+            & weight            & $2119.7\unit{g}$ & $2101.5\unit{g}$ \\
+            & lithium           & $63.56\unit{mg/L}$ & $218.5\unit{mg/L}$ \\
+            & magnesium         & $2.974\unit{mg/L}$ & $130.0\unit{mg/L}$ \\
+\addlinespace
+Dilute      & tare & \multicolumn{2}{c}{$111.5\unit{g}$} \\
+            & weight            & $2117.8\unit{g}$ & --- \\
+            & lithium           & $403.1\unit{mg/L}$ & --- \\
+            & magnesium         & $1657\unit{mg/L}$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The dilute's last minute is left out of the table on purpose. Recovery divides by what the
+feed held \emph{before} anything moved, so only its first sampled minute is needed; its last
+minute is used by the balance gap, which is a diagnostic. The two tares matter as much as the
+weights do, because neither tank weight means anything until its own empty weight is taken
+off it.
+
+\subsection{Weights become litres}
+
+Nothing measured a volume. Each tank sat on a balance all run, so
+\texttt{VolumeInATank}'s \texttt{find\_litres} turns a reading into litres by subtracting
+that tank's tare and dividing by $1000\unit{g/L}$ --- the dilute salt solutions in these tanks weigh
+close enough to a kilogram per litre that the balance can be read as a volume.
+
+\begin{align}
+V &= \frac{w - w_{\mathrm{tare}}}{1000} \label{eq:volume-ae} \\
+V_{\mathrm{conc}}(0)   &= \frac{2119.7 - 96.2}{1000}  = 2.0235\unit{L} \nonumber \\
+V_{\mathrm{conc}}(240) &= \frac{2101.5 - 96.2}{1000}  = 2.0053\unit{L} \nonumber \\
+V_{\mathrm{dil}}(0)    &= \frac{2117.8 - 111.5}{1000} = 2.0063\unit{L} \nonumber
+\end{align}
+
+The concentrate lost $18.2\unit{g}$ over the run, about nine parts in a thousand of its
+volume. That is why \eqref{eq:volume-ae} is run at each sampled minute rather than once: a
+concentration compared minute to minute against a volume that has shifted is comparing two
+different amounts of liquid.
+
+\subsection{Litres and concentrations become milligrams}
+
+\texttt{AmountInATank.find\_milligrams} multiplies the lab's $\unit{mg/L}$ by the litres from
+\eqref{eq:volume-ae}. Four numbers come out of AE's concentrate:
+
+\begin{align}
+m &= c \, V \label{eq:amount-ae} \\
+\mathrm{Li}(0)   &= 63.56 \times 2.0235 = 128.614\unit{mg} \nonumber \\
+\mathrm{Li}(240) &= 218.5 \times 2.0053 = 438.158\unit{mg} \nonumber \\
+\mathrm{Mg}(0)   &= 2.974 \times 2.0235 =   6.018\unit{mg} \nonumber \\
+\mathrm{Mg}(240) &= 130.0 \times 2.0053 = 260.689\unit{mg} \nonumber
+\end{align}
+
+The feed's first minute goes the same way: $403.1 \times 2.0063 = 808.740\unit{mg}$ of
+lithium and $1657 \times 2.0063 = 3324.439\unit{mg}$ of magnesium.
+
+\subsection{What crossed}
+
+\texttt{AmountThatCrossed} takes the sampled minutes of one tank, sorts them \emph{by
+minute}, and subtracts the first from the last. It sorts because the readings arrive in file
+order, which is not guaranteed to be time order; taking the first and last rows as they came
+would silently reverse the sign on a run whose rows were entered out of sequence.
+
+\begin{align}
+\Delta m_{\mathrm{Li}} &= 438.158 - 128.614 = 309.544\unit{mg}
+   &&\rightarrow\; \frac{309.544}{6.94} = 44.603\unit{mmol} \label{eq:crossed-li} \\
+\Delta m_{\mathrm{Mg}} &= 260.689 -   6.018 = 254.671\unit{mg}
+   &&\rightarrow\; \frac{254.671}{24.305} = 10.478\unit{mmol} \label{eq:crossed-mg}
+\end{align}
+
+Read in milligrams, magnesium looks almost as mobile as lithium. Read in millimoles it does
+not: lithium crossed in four times the molar quantity. That is the whole reason the code
+converts before it compares, and it is why the next two subsections look so different from
+each other.
+
+\subsection{Recovery}
+
+\texttt{LithiumRecovery.find\_percent} divides what reached the concentrate by what the feed
+started with. Both sides are milligrams, so the molar mass cancels and there is nothing to
+gain from going through moles.
+
+\begin{equation}\label{eq:recovery-ae}
+R_{\mathrm{Li}} = 100 \times \frac{\Delta m_{\mathrm{Li}}}{m_{\mathrm{dil,Li}}(0)}
+                = 100 \times \frac{309.544}{808.740} = 38.275\,\%
+\end{equation}
+
+The denominator is the feed's \emph{first} minute, never its last. Against the
+$505.257\unit{mg}$ the feed ended with, the same crossing would read $61.3\,\%$, which would
+reward a run for losing feed to the sample bottles.
+
+\subsection{The charge that passed}
+
+No meter totalled the charge. The supply current was written down every five to fifteen
+minutes, so \texttt{ChargeThatPassed} integrates those readings with the trapezoid rule:
+average the two currents across a gap and multiply by its length.
+
+\begin{equation}\label{eq:charge-ae}
+Q = 60 \sum_{k} \frac{I_k + I_{k+1}}{2}\,(t_{k+1} - t_k)
+\end{equation}
+
+The factor of 60 is the only unit conversion in \eqref{eq:charge-ae}: the log counts minutes and
+a coulomb is an amp-second. AE's log holds 30 minutes with a current, from minute 0 to minute
+240. The first gap contributes $\tfrac{1}{2}(0.081 + 0.082) \times 10 = 0.815\unit{A\,min}$,
+the last $0.082 \times 15 = 1.23\unit{A\,min}$, and all 29 gaps together come to
+$19.6425\unit{A\,min}$. So
+
+\begin{align}
+Q &= 19.6425 \times 60 = 1178.55\unit{C} \label{eq:ae-charge} \\
+\frac{Q}{A} &= \frac{1178.55}{3600 \times 6.0} \times 1000 = 54.563\unit{mA\,h/cm^2}
+   \nonumber
+\end{align}
+
+Minute 170 of AE's log has a voltage but no current, so it never enters \eqref{eq:charge-ae} and
+the curve bridges minute 165 to minute 180 in one step. The run's current density is a
+separate number: \texttt{CurrentDensity} takes the \emph{median} of the same currents,
+$0.082\unit{A}$, giving $0.082 \times 1000 / 6.0 = 13.667\unit{mA/cm^2}$. The median rather
+than the mean, because one run holds one current all the way through and a single misread
+minute should not move the label on the whole run.
+
+\subsection{The transport numbers}
+
+A transport number is a share of the \emph{charge}, not of the ions. Every magnesium ion
+carries two charges, so \texttt{TransportNumbers} weights each metal's millimoles by the
+charge on its own ion. The charge sits on the \texttt{Metal} object next to the molar mass,
+which is what stops the weighting from being forgotten at a call site.
+
+\begin{align}
+z_{\mathrm{Li}} n_{\mathrm{Li}} &= 1 \times \frac{309.544}{6.94}   = 44.603 \label{eq:tn} \\
+z_{\mathrm{Mg}} n_{\mathrm{Mg}} &= 2 \times \frac{254.671}{24.305} = 20.956 \nonumber \\
+t_{\mathrm{Li}} &= \frac{44.603}{44.603 + 20.956} = \frac{44.603}{65.559} = 0.6803
+   \nonumber \\
+t_{\mathrm{Mg}} &= \frac{20.956}{65.559} = 0.3197 \nonumber
+\end{align}
+
+Lithium crossed in $4.26$ times the molar quantity magnesium did, yet carried only $2.13$
+times the charge. Doubling magnesium in \eqref{eq:tn} halves that advantage, and the two
+shares add to one by construction.
+
+\subsection{The feed ratio and permselectivity}
+
+$t_{\mathrm{Li}}/t_{\mathrm{Mg}}$ on its own says as much about the feed as about the
+membrane: a feed with little magnesium in it cannot send much magnesium across. So
+\texttt{Permselectivity} divides the transport ratio by the ratio the feed actually offered,
+which \texttt{FeedRatio}'s \texttt{find\_li\_over\_mg\_\allowbreak in\_the\_dilute} measures
+from the dilute's first sampled minute. Both amounts come from one tank at one minute, so
+the litres cancel and the milligrams carry the ratio.
+
+\begin{align}
+r_{\mathrm{feed}} &= \frac{808.740 / 6.94}{3324.439 / 24.305}
+                   = \frac{116.533}{136.780} = 0.85197 \label{eq:feed-ratio} \\
+P &= \frac{t_{\mathrm{Li}} / t_{\mathrm{Mg}}}{r_{\mathrm{feed}}}
+   = \frac{0.6803 / 0.3197}{0.85197} = \frac{2.12838}{0.85197} = 2.4982 \label{eq:perm-ae}
+\end{align}
+
+Dividing by the feed ratio pins ``no preference'' at $0.5$ whatever the feed was, which is
+the only thing that lets AE and AG be set beside each other at all. AE's $2.4982$ says the
+stack favoured lithium about five times over what the feed handed it.
+
+Note that \eqref{eq:feed-ratio} is lithium over magnesium, measured in the tank. The report's
+\texttt{Mg/Li} column is a different number. \texttt{FeedRatio}'s other method,
+\texttt{find\_mg\_over\_li\_\allowbreak from\_the\_setup}, reads the run sheet's own feed
+concentrations, the other way up, giving
+$(2000/24.305)/(400/6.94) = 1.4277$ for AE. The two are kept apart by name because they
+answer different questions --- the measured one is what \eqref{eq:perm-ae} divides by, the set-up
+one is a design column of the polynomial.
+
+\subsection{The voltage and the energy}
+
+AE's power log never passed $16.0\unit{V}$, reached at minute 0, and fell to
+$11.31\unit{V}$ by minute 240 as the concentrate gained salt and its resistance dropped. The
+highest voltage is what the $20\unit{V}$ supply ceiling is judged against, and on a healthy
+run it is the starting voltage.
+
+Energy uses the same trapezoid as \eqref{eq:charge-ae}, over the product of volts and amps, and
+only over minutes that carry \emph{both}. AE has 30 such minutes, totalling
+$245.996\unit{W\,min}$:
+
+\begin{align}
+E &= 245.996 \times 60 = 14759.78\unit{J} = 4.0999\unit{W\,h} \label{eq:energy-ae} \\
+n_{\mathrm{Li}} &= \frac{309.544}{1000 \times 6.94} = 0.044603\unit{mol} \nonumber \\
+\frac{E}{n_{\mathrm{Li}}} &= \frac{4.0999}{0.044603} = 91.92\unit{W\,h/mol} \nonumber
+\end{align}
+
+Per mole of lithium delivered, rather than per hour or per litre, so a short run and a long
+one, or a gentle current and a hard one, can be compared on the same axis. The denominator is
+the concentrate's gain from \eqref{eq:crossed-li}, and a run whose concentrate gained no
+lithium gets \texttt{None} here instead of a division by zero.
+
+\subsection{Run AG beside it}
+
+AG is AE with one setting changed. Same GO-10 membrane, same $6.0\unit{cm^2}$, same
+$400\unit{mg/L}$ lithium feed, same $0.082\unit{A}$ held for 240 minutes --- and
+$8000\unit{mg/L}$ magnesium instead of $2000$, which is four times the magnesium on a molar
+basis too, $5.7108$ against $1.4277$.
+
+\begin{table}[htbp]
+\centering
+\caption{AE and AG, every stage. Both ran GO-10 at $13.667\unit{mA/cm^2}$ for 240 minutes;
+only the feed magnesium differs.}
+\label{tab:ae-ag}
+\begin{tabular}{lrr}
+\toprule
+ & AE & AG \\
+\midrule
+Feed magnesium ($\unit{mg/L}$)          & $2000$ & $8000$ \\
+Feed Mg/Li from the run sheet           & $1.4277$ & $5.7108$ \\
+\addlinespace
+Concentrate tare ($\unit{g}$)           & $96.2$ & $120.6$ \\
+Dilute tare ($\unit{g}$)                & $111.5$ & $128.8$ \\
+Concentrate volume, minute 0 ($\unit{L}$)   & $2.0235$ & $2.0167$ \\
+Concentrate volume, minute 240 ($\unit{L}$) & $2.0053$ & $1.9847$ \\
+Dilute volume, minute 0 ($\unit{L}$)        & $2.0063$ & $2.0312$ \\
+\addlinespace
+Concentrate Li, minute 0 ($\unit{mg}$)   & $128.614$ & $139.999$ \\
+Concentrate Li, minute 240 ($\unit{mg}$) & $438.158$ & $193.488$ \\
+Concentrate Mg, minute 0 ($\unit{mg}$)   & $6.018$ & $0.190$ \\
+Concentrate Mg, minute 240 ($\unit{mg}$) & $260.689$ & $615.455$ \\
+Dilute Li, minute 0 ($\unit{mg}$)        & $808.740$ & $868.135$ \\
+Dilute Mg, minute 0 ($\unit{mg}$)        & $3324.439$ & $14129.027$ \\
+\addlinespace
+Li crossed ($\unit{mg}$ / $\unit{mmol}$) & $309.544$ / $44.603$ & $53.489$ / $7.707$ \\
+Mg crossed ($\unit{mg}$ / $\unit{mmol}$) & $254.671$ / $10.478$ & $615.265$ / $25.314$ \\
+\addlinespace
+Lithium recovery                         & $38.275\,\%$ & $6.161\,\%$ \\
+Charge passed ($\unit{C}$)               & $1178.55$ & $1179.90$ \\
+Charge passed ($\unit{mA\,h/cm^2}$)      & $54.563$ & $54.625$ \\
+$t_{\mathrm{Li}}$ / $t_{\mathrm{Mg}}$    & $0.6803$ / $0.3197$ & $0.1321$ / $0.8679$ \\
+Feed Li/Mg in the dilute                 & $0.85197$ & $0.21518$ \\
+Permselectivity                          & $2.4982$ & $0.70745$ \\
+\addlinespace
+Highest voltage ($\unit{V}$)             & $16.0$ & $13.9$ \\
+Energy ($\unit{W\,h/mol}$ of Li)         & $91.92$ & $474.68$ \\
+Li balance gap                           & $-19.645\,\%$ & $18.406\,\%$ \\
+Mg balance gap                           & $35.002\,\%$ & $44.626\,\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The two runs pushed essentially the same charge --- $1178.55$ against
+$1179.90\unit{C}$, a tenth of a percent apart --- and spent it on completely different work.
+Lithium recovery fell from $38.3\,\%$ to $6.2\,\%$, because magnesium took $86.8\,\%$ of the
+charge instead of $32.0\,\%$ and the lithium simply had no current left to ride on. The cost
+of a mole of lithium rose from $92$ to $475\unit{W\,h}$ for the same reason: the energy
+denominator in \eqref{eq:energy-ae} shrank by a factor of nearly six while the energy itself
+fell only a tenth.
+
+Permselectivity tells the more careful story. It fell too, from $2.4982$ to $0.70745$, but
+far less than recovery did --- a factor of $3.5$ against a factor of $6.2$. Dividing by the
+feed ratio in \eqref{eq:perm-ae} takes out most, though plainly not all, of the four-fold
+magnesium increase. What is left is a real loss of selectivity under a magnesium-rich feed,
+not an artefact of the feed being different, and that is exactly the separation
+\eqref{eq:perm-ae} exists to make.
+
+One detail of AG is worth following, because it shows the checks and the calculations
+working together. Minute 225 of AG's power log reads $100.06\unit{V}$ on the supply against
+$10.0\unit{V}$ on the multimeter. \texttt{PairedValuesTooFarApart} clears the supply reading
+and writes it to the journal; had it not, AG's highest voltage would read $100.06\unit{V}$
+and its energy would be overstated. With the reading gone, the energy trapezoid bridges
+minute 210 to minute 240 in one $30$-minute step worth $24.76\unit{W\,min}$, and the highest
+voltage falls back to the $13.9\unit{V}$ at minute 0, which is what the table reports.
+
+The balance gaps are diagnostics only; nothing is ever corrected by them. AE's lithium gap is
+negative, meaning the concentrate and rinse together ended with $59.6\unit{mg}$ more lithium
+than the feed appears to have lost, which is sampling and weighing error rather than lithium
+appearing from nowhere. The magnesium gaps of $35\,\%$ and $45\,\%$ are mostly liquid left
+behind in the sample bottles, and the rinse is counted as zero whenever it was never weighed,
+which can only make a gap look worse --- the honest direction for a diagnostic to be wrong in.
+
+\subsection{What the test suite pins}
+
+The numbers above are AE's and AG's, and they are not literals anywhere in the repository ---
+re-run \texttt{uv run limodel analyze} and the report recomputes them from the four CSV files
+every time. What the suite pins is the arithmetic that produced them, one test file per
+quantity under \texttt{tests/\allowbreak analyzer/\allowbreak calculate/\allowbreak
+quantities/}, built on fixture runs whose
+tares are round and whose tanks hold exactly $1.000$ or $2.000\unit{L}$ so every expected
+milligram can be checked in the head.
+
+So each choice this section leaned on has a test standing behind it. A fixture holding
+$10\unit{mmol}$ each of lithium and magnesium asserts $t_{\mathrm{Li}} = 1/3$, which fails the
+moment the charge weighting in \eqref{eq:tn} is dropped. Another asserts recovery of
+$30\,\%$ and states in its own name that it measures against the feed's first minute and not
+its last, so moving the denominator in \eqref{eq:recovery-ae} breaks the build. A third feeds the
+same crossing from two different feeds and asserts permselectivity of $0.5$ and then $1.0$,
+which is \eqref{eq:perm-ae} refusing to be rewritten without the feed ratio. The trapezoid in
+\eqref{eq:charge-ae} is pinned by a steady $0.1\unit{A}$ for an hour reading $360\unit{C}$, and
+by a log handed over out of minute order that must still read $900\unit{C}$.
+
+A change that quietly altered any step of AE's chain would have to get past those first.

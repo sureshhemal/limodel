@@ -1,0 +1,377 @@
+\section{Whether that equation can be believed, and what the code fits instead}
+
+Two different equations are in play, and they must not be confused with each other.
+
+The first is the one asked about. It is ordinary least squares on the nine GO-10 runs, with
+$J$ and $R$ in their real units, fitting all five estimable terms at once:
+
+\begin{equation}
+  \label{eq:five-term}
+  \widehat{\text{recovery}}\;\%
+  = 33.0192 + 3.16999\,J - 14.4538\,R - 0.0954576\,J^{2} + 0.837907\,R^{2}.
+\end{equation}
+
+The second is the one the code prints. It is a different fit: logged and coded units, and only
+the terms that earned their place by forward stepwise selection.
+
+\begin{equation}
+  \label{eq:code-fit}
+  \widehat{\text{recovery}}\;\%
+  = 11.5776 - 15.627\,x_2 + 6.08016\,x_2^{2},
+  \qquad x_2 = \frac{\ln R - 1.395778}{1.039721}.
+\end{equation}
+
+Equation~\eqref{eq:five-term} is a hand fit, made to answer the question ``what do five terms in
+real units come to''. Equation~\eqref{eq:code-fit} is what \texttt{uv run limodel analyze} prints
+today. They share the nine runs and nothing else: different units, different terms, different
+column space. Current density does not appear in~\eqref{eq:code-fit} at all. The rest of this
+section judges the first and then explains the second.
+
+\subsection{$R^{2}$ says 0.875, and $R^{2}$ cannot say otherwise}
+
+$R^{2}$ compares the squared misses of the fit against the squared misses of the flat line at
+the mean. For~\eqref{eq:five-term} the sum of squared residuals is $201.9127$ and the same sum
+about the mean of the nine recoveries is $1611.1333$, so
+
+\begin{equation}
+  R^{2} = 1 - \frac{201.9127}{1611.1333} = 0.875.
+\end{equation}
+
+That number is not evidence, because of how least squares works. Adding a column to $X$ widens
+the space the fit may land in, and it still contains everything the narrower space contained ---
+setting the new coefficient to zero recovers the old fit exactly. Least squares takes the best
+point in the wider space, so the sum of squared residuals can only fall and $R^{2}$ can only
+rise. A term that is pure noise still buys a little. With nine runs and five columns there is
+plenty to buy.
+
+Table~\ref{tab:r2-ladder} adds the real-unit terms one at a time and prints $R^{2}$ beside the
+leave-one-out error. $R^{2}$ climbs every single step. The out-of-sample error does not.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The nested real-unit ladder on the nine GO-10 runs. $R^{2}$ rises by construction;
+  the leave-one-out error is free to do what it likes, and gets worse.}
+  \label{tab:r2-ladder}
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Terms in the fit & Residual sum of squares & $R^{2}$ & Leave-one-out rmse \\
+    \midrule
+    intercept only              & 1611.1333 & 0.000 & 15.05 \\
+    ${}+J$                      & 1598.2892 & 0.008 & 16.31 \\
+    ${}+R$                      &  507.1461 & 0.685 & 15.56 \\
+    ${}+J^{2}$                  &  505.2442 & 0.686 & 19.82 \\
+    ${}+R^{2}$                  &  201.9127 & 0.875 & 41.77 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Leave-one-out: fit on eight runs, predict the ninth}
+
+The honest question is not how close the curve passes to the runs it was fitted on, but how far
+it would miss a run it has never seen. With nine runs there is no test set to spare, so every run
+takes its turn as the test set: drop run~$i$, fit the same five terms on the remaining eight,
+predict run~$i$, square the miss. Nine folds, then the root of the mean.
+
+For~\eqref{eq:five-term} that comes to
+
+\begin{equation}
+  \text{rmse}_{\text{LOO}} = 41.77 \;\text{points of recovery}.
+\end{equation}
+
+Three yardsticks sit beside it, and all three are smaller:
+
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{6.612} --- the bench's own scatter, the pooled standard deviation of the two
+    settings that were run twice. This is the floor. No equation can predict a run more closely
+    than the bench reproduces one.
+  \item \textbf{14.19} --- the standard deviation of the nine recoveries. This is what you miss
+    by if you ignore both settings and quote the average, $25.14\,\%$, for every run.
+  \item \textbf{15.05} --- the leave-one-out error of quoting that average, which is the same
+    idea measured the same way as the 41.77, fold for fold.
+\end{itemize}
+
+So the conclusion is not ``the fit is weak''. It is worse than that. Predicting a new run with
+\eqref{eq:five-term} misses by $41.77$ where quoting the average of the nine misses by $15.05$,
+a factor of $2.77$. The equation has \emph{negative skill}: on the evidence available it is
+strictly worse than refusing to model at all.
+
+Where that comes from is countable. Five coefficients are being fitted to nine runs, which
+leaves four degrees of freedom. Worse, the runs are not spread evenly across the two terms in
+$R$: six of the nine (AE, AH, AI, AJ, AN, AP) sit at the lowest feed ratio, $1.4277$, and the
+feed ratio moves in only three runs --- AF, AG and AT. Those three runs are the sole support for
+both the $R$ term and the $R^{2}$ term. Drop any one of them in a fold and the curvature in $R$
+is being guessed from two points, which is why the leave-one-out error is so much larger than
+the fitted residuals.
+
+\subsection{The two repeats, and what they cap}
+
+Two settings were run twice. The code finds them in
+\texttt{ReplicateScatter\allowbreak{}.find\_groups}, which groups runs by membrane and both
+settings rounded to two places.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The repeated settings on GO-10. Both pairs are the same dialled setup, run twice.}
+  \label{tab:repeats}
+  \begin{tabular}{@{}lrrrrr@{}}
+    \toprule
+    Pair & $J$ ($\mathrm{mA/cm^2}$) & $R$ ($\mathrm{mol/mol}$) & First & Second & Difference \\
+    \midrule
+    AH, AI & 7.50  & 1.4277 & 36.59 & 37.66 & 1.07 \\
+    AN, AP & 25.67 & 1.4277 & 39.50 & 26.32 & 13.18 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Pooling the two pairs gives the $6.612$ quoted above, on two degrees of freedom. The second pair
+is doing almost all of the work: AN and AP are the same setting and disagree by $13.2$ points of
+recovery, which is nearly as wide as the whole spread of the nine runs.
+
+This caps every fit, not just this one. A curve cannot resolve an effect smaller than the
+disagreement between two runs of the same thing. Any claim that moving a setting changes recovery
+by, say, eight points is indistinguishable from running the same setting twice. It also distorts
+the fit: in~\eqref{eq:five-term} AN and AP get the same prediction, $32.57$, and so contribute
+residuals of $+6.93$ and $-6.25$ no matter what the coefficients are. Those two alone account
+for $87$ of the $201.9$ residual sum of squares.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Fitted values and residuals of~\eqref{eq:five-term}. Residual is measured recovery
+  minus fitted.}
+  \label{tab:five-term-residuals}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Run & $J$ ($\mathrm{mA/cm^2}$) & $R$ ($\mathrm{mol/mol}$) & Fitted \% & Residual \\
+    \midrule
+    AE & 13.67 &  1.4277 & 39.59 & $-1.31$ \\
+    AF & 13.67 &  2.8554 & 24.07 & $-5.73$ \\
+    AG & 13.67 &  5.7108 &  3.30 & $+2.86$ \\
+    AH &  7.50 &  1.4277 & 32.50 & $+4.09$ \\
+    AI &  7.50 &  1.4277 & 32.50 & $+5.16$ \\
+    AJ &  4.50 &  1.4277 & 26.42 & $-5.34$ \\
+    AN & 25.67 &  1.4277 & 32.57 & $+6.93$ \\
+    AP & 25.67 &  1.4277 & 32.57 & $-6.25$ \\
+    AT & 13.67 & 11.4215 &  2.73 & $-0.41$ \\
+    \midrule
+    \multicolumn{4}{@{}l}{Residual sum of squares} & 201.9127 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Why there is no interaction term}
+
+The obvious sixth term is $J\!\cdot\!R$, the one that would say whether the best current density
+depends on how much magnesium is in the feed. It cannot be fitted. Not fitted badly --- not
+fitted at all.
+
+Over these nine runs, exactly,
+
+\begin{equation}
+  \label{eq:no-interaction-term}
+  J\!\cdot\!R = 1.4277\,J + 13.6667\,R - 19.5118,
+\end{equation}
+
+and ``exactly'' is meant literally: the largest departure over the nine rows is
+$7.1\times10^{-15}$, which is floating-point dust. Put the six columns side by side,
+
+\begin{equation}
+  X = \begin{bmatrix}
+    1 & J_1 & R_1 & J_1^2 & R_1^2 & J_1 R_1 \\
+    \vdots & \vdots & \vdots & \vdots & \vdots & \vdots \\
+    1 & J_9 & R_9 & J_9^2 & R_9^2 & J_9 R_9
+  \end{bmatrix},
+\end{equation}
+
+and the rank is $5$, not $6$. The interaction column is already a combination of the intercept,
+the $J$ column and the $R$ column. There is no unique answer for the six coefficients: shift the
+interaction coefficient by $t$, adjust the intercept by $19.5118\,t$, the $J$ coefficient by
+$-1.4277\,t$ and the $R$ coefficient by $-13.6667\,t$, and you have a different equation that
+fits every one of the nine runs identically well. This is why
+\texttt{SecondOrderPolynomial\allowbreak{}.find\_fit} checks the rank \texttt{numpy.linalg.lstsq}
+returns and hands back \texttt{None} when it falls short of the number of terms, instead of
+printing whichever of the infinitely many answers the solver happened to land on.
+
+The reason is the shape of the design, not the arithmetic. Figure~\ref{fig:design-cross} draws
+it. Current density was moved only at the lowest feed ratio, and the feed ratio was moved only at
+the middle current density. The runs form a cross, with AE at the crossing point. On a cross,
+one of the two settings is always sitting at its base value, so for every run
+$(J - 13.6667)(R - 1.4277) = 0$. Expanding that product gives
+\eqref{eq:no-interaction-term} directly, with $13.6667 \times 1.4277 = 19.5118$. The product
+column carries nothing the other columns do not already carry. Fitting an interaction needs at
+least one run off the cross --- a high feed ratio at a high current density, say.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[x=4.6cm, y=1.35cm, font=\small]
+    % axes; points are placed on log spacing, which is how the code sees them
+    \draw[-Stealth] (-1.25,-1.3) -- (1.3,-1.3);
+    \node at (0.1,-1.95) {$J$ ($\mathrm{mA/cm^2}$), log spacing};
+    \draw[-Stealth] (-1.25,-1.3) -- (-1.25,1.35) node[above, align=center]
+      {$R$ ($\mathrm{mol/mol}$),\\log spacing};
+
+    % tick labels
+    \foreach \x/\lab in {-1/4.5, -0.4132/7.5, 0.2761/13.67, 1/25.67}
+      \draw (\x,-1.3) -- (\x,-1.38) node[below, font=\footnotesize] {\lab};
+    \foreach \y/\lab in {-1/1.43, -0.3333/2.86, 0.3333/5.71, 1/11.42}
+      \draw (-1.25,\y) -- (-1.31,\y) node[left, font=\footnotesize] {\lab};
+
+    % the arm in current density, all at the lowest feed ratio
+    \draw[gray, dashed] (-1,-1) -- (1,-1);
+    % the arm in feed ratio, all at the middle current density
+    \draw[gray, dashed] (0.2761,-1) -- (0.2761,1);
+
+    \foreach \x/\y/\lab in {%
+      -1/-1/AJ, -0.4132/-1/{AH, AI}, 1/-1/{AN, AP},
+      0.2761/-0.3333/AF, 0.2761/0.3333/AG, 0.2761/1/AT}
+      \fill (\x,\y) circle (2.2pt) node[above right=1pt and 2pt, font=\footnotesize] {\lab};
+    \fill (0.2761,-1) circle (2.2pt)
+      node[above right=1pt and 2pt, font=\footnotesize] {AE};
+  \end{tikzpicture}
+  \caption{The nine GO-10 runs. Current density moves only along the bottom arm, at
+  $R = 1.4277$; the feed ratio moves only along the upright arm, at $J = 13.67$. AE sits where
+  they cross, and AH/AI and AN/AP are the two repeated settings. Nothing occupies the interior,
+  so the $J\!\cdot\!R$ column is redundant.}
+  \label{fig:design-cross}
+\end{figure}
+
+\subsection{What the code fits instead}
+
+The code never forms~\eqref{eq:five-term}. It makes two choices the hand fit does not.
+
+\paragraph{Logged, then coded.} \texttt{DesignPoints} takes the logarithm of each setting, then
+centres and scales it so the runs span $-1$ to $+1$:
+
+\begin{align}
+  x_1 &= \frac{\ln J - 2.374635}{0.870558},
+  & c_J &= \tfrac12(\ln J_{\max} + \ln J_{\min}),
+  & h_J &= \tfrac12(\ln J_{\max} - \ln J_{\min}), \\
+  x_2 &= \frac{\ln R - 1.395778}{1.039721},
+  & c_R &= \tfrac12(\ln R_{\max} + \ln R_{\min}),
+  & h_R &= \tfrac12(\ln R_{\max} - \ln R_{\min}).
+\end{align}
+
+Logs because the settings were dialled multiplicatively, not in equal steps: $J$ runs
+$4.5 \to 25.67$, a $5.7$-fold span, and $R$ runs $1.4277 \to 11.42$, which is three exact
+doublings, an $8$-fold span. A polynomial in $R$ asked to cover an eightfold range spends its
+curvature on the top end.
+
+Coding because without it the squared columns swamp the linear ones. In real units the $J$
+column reaches $25.67$ while $J^{2}$ reaches $658.8$, and $R$ reaches $11.42$ while $R^{2}$
+reaches $130.5$. The condition number of the five-column $X$ is $1770$. Logged but uncoded it is
+$225$. Logged and coded, every column lies within $\pm 1$ and the condition number is $6.07$.
+That is not cosmetic: a badly scaled $X$ makes the coefficients delicate, and coefficients that
+move a lot for a small change in the data are coefficients nobody should quote.
+
+\paragraph{Forward stepwise on the leave-one-out error.} Rather than fit everything and report
+it, \texttt{FittedOutcome\allowbreak{}.find\_best\_polynomial} grows the model one term at a
+time, and the thing it minimises is the out-of-sample error, not the fitted residual. That
+matters, because minimising the fitted residual would add every term every time, as
+Table~\ref{tab:r2-ladder} shows. Figure~\ref{fig:stepwise} is the loop.
+
+The one structural rule is in \texttt{find\_terms\_it\_may\_add}: a squared term may not enter
+before its own linear term. A curvature without its slope cannot be read --- the vertex is then
+pinned to the centre of the coded range by accident rather than by evidence.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[font=\small, node distance=0pt,
+      box/.style={draw, rounded corners, align=center, inner sep=5pt, text width=8.2cm},
+      arrow/.style={-Stealth, thick}]
+
+    \node[box] (start) at (0,0)
+      {\textbf{Start.} chosen $=$ (intercept).\\
+       $e \leftarrow$ leave-one-out rmse of the intercept-only fit};
+
+    \node[box, below=0.65cm of start] (allowed)
+      {List the terms it may add: those from
+       $(x_1,\; x_2,\; x_1^{2},\; x_2^{2})$ not yet chosen, whose own linear term is already in};
+
+    \node[box, below=0.65cm of allowed] (score)
+      {For each one, fit chosen $+$ that term nine times over, leaving out one run each time,
+       and take the rmse of the nine misses\\[2pt]
+       \footnotesize (a fit whose rank falls short of its terms returns no rmse; that term is
+       passed over)};
+
+    \node[box, below=0.65cm of score] (best)
+      {Take the lowest rmse of them, $r$, and the term that reached it};
+
+    \node[draw, rounded corners, below=0.65cm of best, inner sep=5pt,
+          minimum width=8.4cm] (test)
+      {Is $r < e$?};
+
+    \node[box, below=1.15cm of test] (stop)
+      {\textbf{Stop.} Refit chosen on all nine runs and print those coefficients.\\
+       Report $e$ as the fit's leave-one-out error};
+
+    \draw[arrow] (start) -- (allowed);
+    \draw[arrow] (allowed) -- (score);
+    \draw[arrow] (score) -- (best);
+    \draw[arrow] (best) -- (test);
+    \draw[arrow] (test) -- node[right, font=\footnotesize]
+      {no, or nothing left to add} (stop);
+
+    % the loop back up the left-hand side
+    \coordinate (left) at ($(test.west) + (-1.1cm, 0)$);
+    \draw[arrow] (test.west) -- (left) -- (left |- allowed.west) -- (allowed.west);
+    \node[font=\footnotesize, align=center, left=1pt of left]
+      {yes:\\ add it,\\ $e \leftarrow r$};
+  \end{tikzpicture}
+  \caption{Forward stepwise selection as \texttt{FittedOutcome.find\_best\_polynomial} runs it.
+  The loop adds a term only when it lowers the leave-one-out error, so a term that merely fits
+  the nine runs better never gets in.}
+  \label{fig:stepwise}
+\end{figure}
+
+Run on recovery, the loop takes two steps and stops (Table~\ref{tab:stepwise-trace}). Current
+density is offered at every step and rejected at every step: adding $x_1$ always makes the
+out-of-sample error worse. Given that AN and AP disagree by $13.2$ points at the same current
+density, that is the honest outcome.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The stepwise trace on recovery \%. Each cell is a full nine-fold leave-one-out rmse.
+  Candidates are offered in the order $x_1$, $x_2$, $x_1^2$, $x_2^2$, so a tie goes to the
+  simpler term.}
+  \label{tab:stepwise-trace}
+  \begin{tabular}{@{}llrl@{}}
+    \toprule
+    Step & Model so far & Its rmse & Terms offered, and their rmse \\
+    \midrule
+    0 & intercept                     & 15.052 & $x_1$: 16.244 \quad $x_2$: \textbf{7.898} \\
+    1 & intercept, $x_2$              &  7.898 & $x_1$: 9.950 \quad $x_2^2$: \textbf{7.122} \\
+    2 & intercept, $x_2$, $x_2^{2}$   &  7.122 & $x_1$: 9.471 --- nothing lower, stop \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+That leaves~\eqref{eq:code-fit}, which the report prints as
+\texttt{intercept +11.58,\allowbreak{} x2 -15.63,\allowbreak{} x2\_squared +6.08}. Its leave-one-out error is $7.122$
+against the same bench scatter of $6.612$.
+
+This is a far better equation than~\eqref{eq:five-term}: $7.122$ against $41.77$, and now
+comfortably inside the $15.05$ of quoting the average, so it does carry real information about
+the feed ratio. But $7.122$ is still larger than $6.612$, and that is the comparison that
+decides. The fit misses a held-out run by more than the bench misses itself when it repeats a
+setting, so nothing in the equation has been separated from the bench's own noise. The report
+says so in those words --- \emph{worse than the bench repeating itself, so this fit has earned
+no conclusion} --- and for the same reason the search under the gates returns no best setup: no
+point inside the measured range clears the $35\,\%$ recovery floor.
+
+\subsection{What would change the answer}
+
+Two things would, and they are both runs rather than arithmetic.
+
+Resolving AN against AP settles the yardstick. Those two are the same setting at
+$25.67\unit{mA/cm^2}$ and $1.4277\unit{mol/mol}$ and they differ by $13.2$ points of recovery.
+That single disagreement sets the $6.612$ that every fit is measured against, and until it is
+either reproduced or explained, no fit can clear it. A third run at that setting either confirms
+the spread, in which case recovery at high current density is genuinely that variable, or
+identifies one of the two as faulty, in which case the scatter drops and $7.122$ may already be
+good enough.
+
+Runs off the cross make the interaction estimable and the curvature in $J$ real. A feed ratio
+away from the lowest, at a current density away from the middle --- $R = 5.71$ at
+$J = 25.67\unit{mA/cm^2}$, say --- breaks the identity
+$(J - 13.6667)(R - 1.4277) = 0$, lifts the rank of the six-column design from $5$ to $6$, and
+moves the support for the terms in $R$ off the three runs AF, AG and AT that currently carry
+them alone.

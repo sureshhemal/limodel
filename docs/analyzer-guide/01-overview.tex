@@ -1,0 +1,219 @@
+\section{What the analyzer does, end to end}
+
+The analyzer turns four CSV files into two things: one row of numbers per run, and a fitted
+polynomial per membrane with the best setup that polynomial allows. Nothing in between is
+saved to disk. Every stage takes objects in and hands objects on, and the whole chain is
+three statements long.
+
+\subsection{The four stages, in the order they run}
+
+\texttt{Analyzer.analyze} in \texttt{src/limodel/analyzer/analyzer.py} is the order, and it is
+short on purpose --- the order is the only thing this class knows:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Load.} \texttt{DataLoader.load} reads the four CSV files and returns a list of
+        \texttt{Run} objects, each with its readings already inside it.
+  \item \textbf{Preprocess.} \texttt{Preprocessor.run} takes that list and gives back the
+        shorter list the modelling may use. On the way it clears single values it cannot
+        believe.
+  \item \textbf{Calculate.} \texttt{Calculator.find\_results} takes the surviving runs
+        and returns one \texttt{Result} per run whose two outcomes came out.
+  \item \textbf{Model.} \texttt{Surrogate.find\_models} takes those results, groups them by
+        membrane, fits three outcomes per membrane, and searches each membrane for its best
+        setup.
+\end{enumerate}
+
+Each stage sees only what the one before it returned. The preprocessor never sees a CSV file;
+the calculator never sees a run that was dropped; the fitting never sees a \texttt{Run} at all,
+only \texttt{Result} rows.
+
+What comes back is an \texttt{Analysis}: the runs used, the results, and the models. The runs
+travel beside the results rather than being replaced by them, because a reader checking a
+number wants the readings it came from, and because the count of runs used is part of the
+claim --- a polynomial from sixteen runs and one from twenty-one are different statements.
+
+\subsection{The journal: made once, handed down}
+
+The \texttt{Journal} is created empty in one place --- the \texttt{analyze} command in
+\texttt{cli/main.py} --- and passed into \texttt{Analyze}, which passes it into
+\texttt{Analyzer}, which passes it into \texttt{Preprocessor}, \texttt{Calculator} and
+\texttt{Surrogate}. There is exactly one of them per run of the program.
+
+It is injected rather than owned by each stage for one reason: the report has to add up. If the
+preprocessor kept its own list of drops and the calculator kept another, the two would have to
+be collected and merged by whoever printed them, and a stage added later would be easy to leave
+out of that merge. With one journal, a stage that writes nothing down has simply written nothing
+down, and the arithmetic at the top of the report is a count of one list.
+
+Two things get written. A \textbf{drop} means the whole record is out of the modelling. A
+\textbf{skip} means the record stays and one of its values does not. An \texttt{Entry} carries
+the action, the record's id, the record's class name, the reason in plain words, and (for a
+skip) the field that was cleared.
+
+The journal takes the id and the class name off the record itself, inside
+\texttt{Journal.\_write}, instead of having each caller pass them. That is deliberate: a caller
+that passed its own id could pass one that disagreed with the record, and nothing would catch
+it.
+
+Because every removal leaves an entry, the line under the journal reconciles by construction:
+
+\begin{equation}
+  \label{eq:reconcile}
+  N_{\text{loaded}} \;=\; N_{\text{used}} \;+\; \bigl|\{\, \text{drop ids}\,\} \setminus
+  \{\, \text{used ids}\,\}\bigr|
+\end{equation}
+
+The set difference in \eqref{eq:reconcile} matters. A run can be dropped by the calculator
+\emph{after} the preprocessor already passed it, so it would appear both in the used list
+handed over and in the drops; subtracting the used ids counts each run once. On the current
+data the analyzer writes 32 entries --- 5 drops and 27 skips --- and the report prints
+\texttt{using 16 of 21 runs}.
+
+The \texttt{Surrogate} stage writes nothing to the journal. A membrane it will not fit is
+reported on its own answer, in \texttt{SurrogateModels.not\_fitted}, because that is a finding
+about the design of the experiments rather than a record that was set aside.
+
+\subsection{The four files, and why loading is all or nothing}
+
+\begin{table}[htbp]
+  \centering
+  \caption{The four CSV files in \texttt{data/}, with the row counts in the current data.}
+  \label{tab:files}
+  \begin{tabular}{@{}llr@{}}
+    \toprule
+    File & One row per & Rows \\
+    \midrule
+    \texttt{runs.csv}           & experiment, with how it was set up        & 21 \\
+    \texttt{tank\_readings.csv} & run, minute and tank                      & 1049 \\
+    \texttt{stack\_readings.csv}& run and minute, from the power log        & 891 \\
+    \texttt{samples.csv}        & bottle sent to the lab                    & 345 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\texttt{runs.csv} holds the setup and nothing measured during the run: the membranes, the feed
+concentrations, the set current, the flow, the membrane area, the cell pairs, the three tank
+tares, and the \texttt{include} flag. \texttt{tank\_readings.csv} holds conductivity, pH,
+temperature and weight for the concentrate, dilute and rinse.
+\texttt{stack\_readings.csv} holds the two voltage columns and the two current columns ---
+supply and multimeter --- which is what lets the checks compare one instrument against the
+other. \texttt{samples.csv} holds the lab's answers: lithium, magnesium, sodium, potassium,
+calcium and TOC.
+
+Each file has a schema in \texttt{src/limodel/schema/}, written as a \emph{pandera}
+\texttt{DataFrameModel}. Every schema sets \texttt{coerce = True} and \texttt{strict = True}, so
+values are converted to the declared type on load and the columns must be exactly the declared
+ones --- no extras, none missing. The three reading files declare a uniqueness key
+(\texttt{run\_code} with \texttt{minute}, plus \texttt{tank} where there is one), and
+\texttt{run\_code} and \texttt{sample\_id} are unique in their own files. Measured columns are
+\texttt{nullable}; setup columns are not, and most carry a range (\texttt{li\_feed\_mg\_l}
+greater than zero, \texttt{ph} between 0 and 14, \texttt{area\_cm2} greater than zero).
+
+A blank cell is missing, never zero. \texttt{pandas} reads it as NaN, and the loader's
+\texttt{\_without\_missing} turns it into \texttt{None} before any model is built, so a value
+that was not measured never arrives as a number that was.
+
+Loading is all or nothing. Every accessor on \texttt{CsvSource} is decorated with
+\texttt{@pa.check\_types}, so the table is validated as it is handed out; one offending cell
+raises, and no \texttt{Run} object is built at all. That is the right behaviour here because the
+alternative is worse: a table loaded with the bad rows quietly dropped would still produce a
+polynomial, and it would be the wrong polynomial with no sign that anything had gone missing.
+Fixing data is a separate job, which is why \texttt{CsvSource.raw\_tables} exists --- it returns
+the tables unchecked, and the \texttt{check} command uses it to list what to repair in the
+workbook. Calculating refuses bad data; reporting on bad data does not.
+
+\subsection{The four objects, and how they nest}
+
+\begin{itemize}[nosep]
+  \item \texttt{Run} --- the setup, plus two lists: \texttt{stack\_readings} and
+        \texttt{tank\_readings}.
+  \item \texttt{StackReading} --- the power log at one minute of a run.
+  \item \texttt{TankReading} --- one tank at one minute of a run, with an optional
+        \texttt{sample}.
+  \item \texttt{Sample} --- the lab's results for liquid drawn from one tank at one minute.
+\end{itemize}
+
+All four are \emph{pydantic} models, so the nesting is also the validation: handing
+\texttt{Run.model\_validate} a dictionary of rows builds and checks the whole tree in one call.
+
+A sample hangs off the tank reading it was drawn from, not off the run. The reason is that a
+sample is not a property of a run; it is a property of a moment in a tank. Two tanks are often
+sampled at the same minute, so a flat list on the run would need the tank and the minute carried
+along to say which bottle belonged where --- and that pairing would then exist twice, once on
+the sample and once in whatever lookup used it. Hung off the reading, the pairing is the
+structure. \texttt{DataLoader.\_with\_samples} does the matching once, on
+\texttt{(tank, minute)}, and after that any code that has a reading has its sample and its
+conductivity, pH, temperature and weight together. The end-sample step depends on exactly this:
+it walks one tank's readings, keeps the ones that have a sample, sorts them by minute, and looks
+at the first and the last.
+
+On the current data, 21 runs carry 1049 tank readings and 891 stack readings, and all 345
+samples attach to a reading.
+
+\subsection{The id on every object}
+
+Every object carries an \texttt{id}, and the ids are built so that one string says where a
+value came from.
+
+\begin{table}[htbp]
+  \centering
+  \caption{What each object's \texttt{id} is, with an example from the current data.}
+  \label{tab:ids}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Object & \texttt{id} & Example \\
+    \midrule
+    \texttt{Run}          & the run code                          & \texttt{AJ} \\
+    \texttt{TankReading}  & run, tank, minute                     & \texttt{AJ:conc:0} \\
+    \texttt{StackReading} & run, minute                           & \texttt{AJ:0} \\
+    \texttt{Sample}       & the lab's own label                   & \texttt{AE1} \\
+    \texttt{Result}       & the run code                          & \texttt{AE} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A \texttt{Sample} keeps the lab's label as its id, because that is the string written on the
+bottle and the one to quote when querying a result; it carries \texttt{run\_id} and
+\texttt{tank\_id} as well, so it can still point back at the reading it came from.
+\texttt{TankReading} and \texttt{StackReading} each carry \texttt{run\_id} for the same reason.
+\texttt{Result} has an id at all only so that the journal can accept one.
+
+That last point is what the ids are for. \texttt{Journal.\_write} does not care what it has been
+handed; it reads \texttt{record.id} and \texttt{type(record).\_\_name\_\_} and writes those down.
+So any object with an id can be journalled, and the entry locates the thing without the journal
+knowing anything about it. The report then splits the id on colons to sort the entries by run
+and then by minute, which is why a dropped run (no minute in its id) prints above its own
+readings.
+
+\subsection{The stages and the classes that do them}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Each stage, the class that drives it, and what it hands on.}
+  \label{tab:stages}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Stage & Class & Hands on \\
+    \midrule
+    Load       & \texttt{DataLoader}, \texttt{CsvSource}      & \texttt{list[Run]} \\
+    Preprocess & \texttt{Preprocessor} and three \texttt{Step}s & \texttt{list[Run]}, shorter \\
+    Calculate  & \texttt{Calculator} and the quantity classes & \texttt{list[Result]} \\
+    Model      & \texttt{Surrogate}, \texttt{FittedOutcome}, \texttt{DesignPoints}
+               & \texttt{SurrogateModels} \\
+    \midrule
+    Order      & \texttt{Analyzer}  & \texttt{Analysis} \\
+    Record     & \texttt{Journal}   & \texttt{tuple[Entry, ...]} \\
+    Report     & \texttt{Analyze}   & the printed lines \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{What follows}
+
+The rest of this document opens each stage in turn: the three preprocessing steps and the six
+reading checks, with the thresholds each one judges by and the reason behind every number; the
+quantities the calculator works out from tank weights, lab results and the power log, and the
+assumptions inside each one; the second-order polynomial, how the two settings are logged and
+coded, how terms are kept or dropped, and how leave-one-out error is weighed against the bench's
+own scatter; and the search for the best setup under the recovery floor and the voltage ceiling.

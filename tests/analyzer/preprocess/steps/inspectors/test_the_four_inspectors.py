@@ -10,12 +10,12 @@ from limodel.analyzer.preprocess.steps.checks.value_far_from_the_median import V
 from limodel.analyzer.preprocess.steps.checks.value_moving_too_fast import ValueMovingTooFast
 from limodel.analyzer.preprocess.steps.checks.value_outside_the_range import ValueOutsideTheRange
 from limodel.analyzer.preprocess.steps.inspectors.conc_tank_inspector import ConcTankInspector
-from limodel.analyzer.preprocess.steps.inspectors.diluate_tank_inspector import DiluateTankInspector
+from limodel.analyzer.preprocess.steps.inspectors.dilute_tank_inspector import DiluteTankInspector
 from limodel.analyzer.preprocess.steps.inspectors.power_log_inspector import PowerLogInspector
 from limodel.analyzer.preprocess.steps.inspectors.rinse_tank_inspector import RinseTankInspector
 from limodel.analyzer.thresholds import Thresholds
 
-TANKS = [ConcTankInspector, DiluateTankInspector, RinseTankInspector]
+TANKS = [ConcTankInspector, DiluteTankInspector, RinseTankInspector]
 EVERY_INSPECTOR = [*TANKS, PowerLogInspector]
 
 WHAT_A_TANK_IS_HELD_TO = [

@@ -72,7 +72,7 @@ def test_a_weight_the_concentrate_cannot_have_reached_is_taken_out(runs):
     assert weights_of(given, "conc") == [2119.7, 2117.8, None]
 
 
-def test_the_diluate_is_checked_too(runs):
+def test_the_dilute_is_checked_too(runs):
     given = runs(dil=DIL_JUMPED)
 
     SkipSuspectReadings().apply(given, Journal())

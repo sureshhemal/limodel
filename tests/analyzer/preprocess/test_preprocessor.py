@@ -7,6 +7,7 @@ from limodel.analyzer.journal import Journal
 from limodel.analyzer.preprocess.preprocessor import Preprocessor
 from limodel.analyzer.preprocess.steps.drop_excluded_runs import DropExcludedRuns
 from limodel.analyzer.preprocess.steps.drop_runs_missing_an_end_sample import DropRunsMissingAnEndSample
+from limodel.analyzer.preprocess.steps.drop_runs_on_another_membrane import DropRunsOnAnotherMembrane
 from limodel.analyzer.preprocess.steps.skip_suspect_readings import SkipSuspectReadings
 from limodel.analyzer.preprocess.steps.step import Step
 from limodel.data_loader import DataLoader
@@ -32,12 +33,23 @@ def runs(monkeypatch, data_dir):
 
 def test_the_steps_in_order():
     assert [type(step) for step in Preprocessor.steps] == [DropExcludedRuns,
+                                                           DropRunsOnAnotherMembrane,
                                                            SkipSuspectReadings,
                                                            DropRunsMissingAnEndSample]
 
 
 def test_run_gives_back_the_runs_the_modelling_can_use(runs):
     assert [run.run_code for run in Preprocessor(Journal()).run(runs)] == ["AA", "BB"]
+
+
+def test_a_run_on_another_membrane_is_dropped_with_the_reason(monkeypatch, runs):
+    monkeypatch.setattr(config, "MEMBRANES_MODELLED", ("GO-10",))
+    runs[1].cem = "Pristine"
+    journal = Journal()
+
+    assert [run.run_code for run in Preprocessor(journal).run(runs)] == ["AA"]
+    assert [(entry.id, entry.reason) for entry in journal.entries] == [
+        ("BB", "not a membrane being modelled")]
 
 
 def test_each_step_gets_the_runs_the_one_before_it_returned(monkeypatch, runs):

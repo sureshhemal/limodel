@@ -3,10 +3,9 @@
 from pathlib import Path
 
 import pandas as pd
-import pandera.pandas as pa
-from pandera.typing import DataFrame
 
 from limodel.schema import Run, Sample, StackReading, TankReading
+from limodel.sources.rows_the_schema_accepts import RowsTheSchemaAccepts
 
 
 class CsvSource:
@@ -24,25 +23,47 @@ class CsvSource:
         "samples": "samples.csv",
     }
 
+    # Each table, the schema it answers to, what its rows become, and the column that names
+    # a row so a refused one can be pointed at.
+    CHECKED = {
+        "runs": (Run, "Run", "run_code"),
+        "stack_readings": (StackReading, "StackReading", "run_code"),
+        "tank_readings": (TankReading, "TankReading", "run_code"),
+        "samples": (Sample, "Sample", "sample_id"),
+    }
+
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self._tables = {}
+        self._kept = {}
+        self._refused = []
 
-    @pa.check_types
-    def runs(self) -> DataFrame[Run]:
-        return self._read("runs")
+    def runs(self):
+        return self._find_accepted("runs")
 
-    @pa.check_types
-    def stack_readings(self) -> DataFrame[StackReading]:
-        return self._read("stack_readings")
+    def stack_readings(self):
+        return self._find_accepted("stack_readings")
 
-    @pa.check_types
-    def tank_readings(self) -> DataFrame[TankReading]:
-        return self._read("tank_readings")
+    def tank_readings(self):
+        return self._find_accepted("tank_readings")
 
-    @pa.check_types
-    def samples(self) -> DataFrame[Sample]:
-        return self._read("samples")
+    def samples(self):
+        return self._find_accepted("samples")
+
+    def find_refused_rows(self):
+        """Every row a schema would not take, across the tables read so far."""
+        return tuple(self._refused)
+
+    def _find_accepted(self, name):
+        """One table, down to the rows its schema takes. The rest are kept, not raised."""
+        if name not in self._kept:
+            schema, model, key_column = self.CHECKED[name]
+            kept, refused = RowsTheSchemaAccepts(schema, model, key_column) \
+                .find_kept_and_refused(self._read(name))
+            self._kept[name] = kept
+            self._refused.extend(refused)
+
+        return self._kept[name]
 
     def raw_tables(self):
         """Every table as it is stored, without checking it against the schema.

@@ -1,0 +1,66 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, fit, backgrounds}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+% headings: bold, barely larger than the text, well spaced
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection.}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.5em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.4em}
+
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+
+% a last-resort stretch so long class names never push past the margin
+\setlength{\emergencystretch}{1.2em}
+
+\begin{document}
+
+\begin{center}
+  {\large\bfseries How the analyzer reaches its numbers}\\[0.35em]
+  {\normalsize From a weight on a scale to the recovery polynomial,
+   and what that polynomial is worth}\\[0.9em]
+  {\small Suresh Hemal \quad\textbullet\quad 3 October 2026}
+\end{center}
+\vspace{0.4em}
+\hrule
+\vspace{1.2em}
+
+{\parskip=0pt
+\tableofcontents
+}
+
+\vspace{1.2em}
+
+This report answers one question: where do the five coefficients of the recovery polynomial come
+from, and what are they worth? It follows a single number all the way through --- from the
+weights and lab results in the four CSV files, through the preprocessing that throws runs away
+and blanks readings it does not believe, to one run's recovery percentage worked out in full,
+to the least squares problem whose solution is those five coefficients, and finally to the
+honest answer about how much the fit can be trusted. Along the way it is careful about one thing
+that is easy to miss: the five-term equation in real units is not the equation the code prints.
+The code logs its inputs, codes them, and chooses its own terms. Both are shown, and the
+difference between them is explained rather than glossed over.
+
+\clearpage
+
+\input{model-derivation/01-the-path}
+\clearpage
+\input{model-derivation/02-one-run}
+\clearpage
+\input{model-derivation/03-the-coefficients}
+\clearpage
+\input{model-derivation/04-what-it-is-worth}
+
+\end{document}

@@ -1,0 +1,421 @@
+\section{Working out what each run came to}
+
+Preprocessing hands on a list of runs the lab can answer for. This stage turns each one into a
+single row of numbers. The class that drives it is \texttt{Calculator}, in
+\path{src/limodel/analyzer/calculate/calculator.py}, and its one public method is
+\texttt{find\_results(runs)}. Every row it produces is a \texttt{Result}: a frozen dataclass
+holding the run code, the membrane, the two settings the run was done at, the two outcomes the
+model is fitted to, and the five further fields the report calls diagnostics. One of those five,
+the highest voltage, is fitted as well, because a gate is placed on it.
+
+Nothing in a \texttt{Result} is copied out of a CSV file. Every field is worked out from tank
+weights, lab concentrations and the power log. The chain below is given in dependency order,
+because that is the order the code reads in: the later quantities call the earlier ones rather
+than re-deriving them.
+
+Each quantity is one small class with static methods and no state. They are in
+\path{src/limodel/analyzer/calculate/quantities/}, one file per class, and the file name is the
+class name. The two constants they all lean on sit in \texttt{constants.py}:
+$F = 96485\unit{C/mol}$, $M_\mathrm{Li} = 6.94\unit{g/mol}$,
+$M_\mathrm{Mg} = 24.305\unit{g/mol}$, and a solution density of $1000\unit{g/L}$.
+
+\subsection{Volume in a tank}
+
+\textbf{\texttt{VolumeInATank}} --- \texttt{find\_litres(reading, tare\_g)} $\rightarrow$
+litres.
+
+Nothing on the rig measured volume. Each tank sat on a balance for the whole run and was weighed
+empty beforehand, so the liquid is the balance reading less that empty weight:
+
+\begin{equation}
+  V(t) \;=\; \frac{w(t) - w_\mathrm{tare}}{\rho},
+  \qquad \rho = 1000\unit{g/L}
+  \label{eq:volume}
+\end{equation}
+
+$w(t)$ is \texttt{weight\_g} on the \texttt{TankReading} for that minute, and $w_\mathrm{tare}$
+comes from the run's own \texttt{tare\_conc\_g}, \texttt{tare\_dil\_g} or \texttt{tare\_rinse\_g}
+column, picked by \texttt{TARE\_FIELD\_BY\_TANK}. Taking $\rho$ as exactly
+$1000\unit{g/L}$ is a deliberate simplification: these are dilute salt solutions, so a litre
+weighs a kilogram closely enough that grammes on the balance can be read straight off as litres.
+Returns \texttt{None} when the balance gave nothing for that minute, or the tare column is empty.
+
+\subsection{Amount of a metal in a tank}
+
+\textbf{\texttt{AmountInATank}} --- \texttt{find\_milligrams(reading, tare\_g, metal)}
+$\rightarrow$ mg.
+
+The lab reports a concentration, which on its own says nothing useful here. Every tank gains and
+loses liquid through the run, so a concentration can rise while the metal in the tank falls. Only
+the mass can be compared minute to minute:
+
+\begin{equation}
+  m_X(t) \;=\; c_X(t)\,V(t),
+  \qquad [\unit{mg/L}] \times [\unit{L}] = [\unit{mg}]
+  \label{eq:amount}
+\end{equation}
+
+$c_X(t)$ is read off the \texttt{Sample} hanging on that reading, through the \texttt{Metal}'s
+own \texttt{field\_name} --- \texttt{li\_mg\_l} for lithium, \texttt{mg\_mg\_l} for magnesium.
+Returns \texttt{None} when the minute has no sample at all, when the lab left that metal's cell
+blank, or when \eqref{eq:volume} could not be worked out.
+
+\subsection{Amount that crossed}
+
+\textbf{\texttt{AmountThatCrossed}} --- \texttt{find\_milligrams(run, tank, metal)}
+$\rightarrow$ mg.
+
+How much of a metal a tank ended with, less how much it started with:
+
+\begin{equation}
+  \Delta m_X^{\,\mathrm{tank}} \;=\; m_X(t_\mathrm{last}) - m_X(t_\mathrm{first})
+  \label{eq:crossed}
+\end{equation}
+
+Only sampled minutes can take part, since \eqref{eq:amount} needs a lab result. The ends are
+found by \emph{minute}, not by position in the list: \texttt{find\_amounts\_by\_minute} builds a
+dictionary keyed by minute, keeps only the minutes that produced a number, and the ends are taken
+from \texttt{sorted()} of those keys. That matters because readings arrive in file order and
+because preprocessing may have removed a minute in the middle --- or at an end, as it did on
+AJ's concentrate at minute~0.
+
+\texttt{find\_ends} returns the pair $(m_X(t_\mathrm{first}), m_X(t_\mathrm{last}))$ rather than
+the difference, because recovery, the feed ratio and the balance gap all need the \emph{start}
+on its own. Both methods return \texttt{None} when fewer than two sampled minutes of that tank
+came through with a number, and \texttt{find\_ends} also returns \texttt{None} for a tank name
+it does not know.
+
+\subsection{Lithium recovery}
+
+\textbf{\texttt{LithiumRecovery}} --- \texttt{find\_percent(run)} $\rightarrow$ per cent.
+
+The share of the lithium the feed started with that ended up in the concentrate:
+
+\begin{equation}
+  R_\mathrm{Li} \;=\; 100 \times
+  \frac{\Delta m_\mathrm{Li}^{\,\mathrm{conc}}}{m_\mathrm{Li}^{\,\mathrm{dil}}(t_\mathrm{first})}
+  \label{eq:recovery}
+\end{equation}
+
+Milligrams stand on both the top and the bottom, so $M_\mathrm{Li}$ cancels. There is nothing to
+gain by converting to moles, and one fewer place for a unit slip to hide. The result is a per
+cent, not a fraction, because that is how the gate is written and how the report prints it.
+
+The bottom is the dilute's \emph{first} sampled minute, not what it ended with. What the feed
+held before anything moved is the whole prize; measuring against the end would make a run that
+moved nothing look like a run that moved everything.
+
+The top is a difference, \eqref{eq:crossed}, and that subtraction is not cosmetic. The
+concentrate never starts with zero lithium, and across these runs its starting amount spans a
+factor of more than five hundred, depending on which salt the concentrate was made up with.
+Over the sixteen runs the calculator uses it runs from $2.6\unit{mg}$ up to $1455.1\unit{mg}$.
+The low end is AN and AO, whose concentrate was made up on a sodium salt rather than a lithium
+one, so only traces were there at the start ($18.6$ and $2.6\unit{mg}$). The high end is AP and
+AQ, started on LiCl at $5\unit{g/L}$ ($1414.4$ and $1455.1\unit{mg}$). The twelve runs started
+on LiCl at $0.5\unit{g/L}$ sit between $126.4$ and $161.7\unit{mg}$. On AQ the lithium already
+in the
+concentrate is about double what the whole feed held, so treating the start as zero would not
+merely bias recovery --- it would report roughly $214\,\%$ in place of $11.4\,\%$.
+
+As a check on \eqref{eq:recovery}, run AE: the concentrate gained
+$309.55\unit{mg}$ of lithium, the dilute began with $808.74\unit{mg}$, and the report prints
+$38.3\,\%$.
+
+\subsection{Charge that passed}
+
+\textbf{\texttt{ChargeThatPassed}} --- \texttt{find\_coulombs(run)} $\rightarrow$ C, and
+\texttt{find\_mah\_per\_cm2(run)} $\rightarrow$ mA\,h/cm\textsuperscript{2}.
+
+No coulomb counter was fitted. The supply current was written down every so many minutes, so the
+charge is the area under those readings, by the trapezium rule over consecutive logged minutes:
+
+\begin{equation}
+  Q \;=\; 60 \sum_{k} \frac{I_k + I_{k+1}}{2}\,\bigl(t_{k+1} - t_k\bigr)
+  \label{eq:charge}
+\end{equation}
+
+The $60$ converts amp-minutes to amp-seconds, and an amp-second is a coulomb. Spread over the
+membrane area and converted to the unit the field quotes:
+
+\begin{equation}
+  q \;=\; \frac{Q}{3600\,A} \times 1000
+  \qquad [\unit{mA\,h/cm^2}]
+  \label{eq:charge-density}
+\end{equation}
+
+The gaps $t_{k+1}-t_k$ are whatever the log holds; nothing is resampled onto an even grid, and no
+reading is carried forward past the last logged minute. Only minutes with a
+\texttt{supply\_current\_a} take part, so a minute preprocessing removed simply widens the
+trapezium either side of it. \texttt{find\_coulombs} returns \texttt{None} on fewer than two such
+minutes, and \texttt{find\_mah\_per\_cm2} also returns \texttt{None} when
+\texttt{area\_cm2} is zero or missing. AE gives $Q = 1178.55\unit{C}$ over
+$A = 6\unit{cm^2}$, which is $54.6\unit{mA\,h/cm^2}$.
+
+\subsection{Current density}
+
+\textbf{\texttt{CurrentDensity}} --- \texttt{find\_ma\_per\_cm2(run)} $\rightarrow$
+mA/cm\textsuperscript{2}.
+
+\begin{equation}
+  J \;=\; \frac{1000 \times \operatorname{median}\bigl(\{I_k\}\bigr)}{A}
+  \qquad [\unit{mA/cm^2}]
+  \label{eq:current-density}
+\end{equation}
+
+This is the first of the two columns the polynomial is fitted over, so how it is obtained
+matters more than it looks. It comes from the \emph{measured} supply current, not from the set
+point: the \texttt{set\_current\_ma} column is empty on all twenty-one runs in \path{data/runs.csv},
+so there is no set point to read. The median rather than the mean, because a run was held at one
+current throughout and the number that labels the whole run should not be dragged by a single
+misread minute. Returns \texttt{None} when no minute carries a current, or the run has no area.
+
+\subsection{Stack voltage}
+
+\textbf{\texttt{StackVoltage}} --- \texttt{find\_highest\_volts(run)} $\rightarrow$ V, and
+\texttt{find\_starting\_volts(run)} $\rightarrow$ V.
+
+\begin{equation}
+  U_\mathrm{max} \;=\; \max_k U_k,
+  \qquad
+  U_\mathrm{start} \;=\; U_{k_\mathrm{min}}
+  \label{eq:voltage}
+\end{equation}
+
+$U_\mathrm{max}$ is the highest \texttt{supply\_voltage\_v} the run reached, and it is the figure
+the $20\unit{V}$ gate is applied to: a ceiling is only cleared if it is cleared at the worst
+minute, not on average. $U_\mathrm{start}$ is the voltage at the earliest minute that has one ---
+the earliest, deliberately, not the lowest --- and says what the stack asked for before anything
+had crossed. Only $U_\mathrm{max}$ reaches a \texttt{Result}; $U_\mathrm{start}$ is there for
+reading a run. Both return \texttt{None} when the power log never recorded a voltage.
+
+\subsection{Transport numbers}
+
+\textbf{\texttt{TransportNumbers}} --- \texttt{find\_numbers(run)} $\rightarrow$
+$(t_\mathrm{Li}, t_\mathrm{Mg})$, dimensionless, summing to $1$.
+
+A transport number is a share of the \emph{charge} carried, not a share of the ions. So each
+metal's crossing is turned into millimoles and then weighted by the charge its own ion carries:
+$z_\mathrm{Li} = 1$, $z_\mathrm{Mg} = 2$. Those charges live on the \texttt{Metal} dataclass
+alongside the molar mass, which is why they travel together.
+
+\begin{equation}
+  n^\star_X \;=\; \frac{z_X\,\Delta m_X^{\,\mathrm{conc}}}{M_X},
+  \qquad
+  t_\mathrm{Li} = \frac{n^\star_\mathrm{Li}}{n^\star_\mathrm{Li} + n^\star_\mathrm{Mg}},
+  \qquad
+  t_\mathrm{Mg} = \frac{n^\star_\mathrm{Mg}}{n^\star_\mathrm{Li} + n^\star_\mathrm{Mg}}
+  \label{eq:transport}
+\end{equation}
+
+Why magnesium counts twice: the current through the stack is carried by charge, and one
+Mg\textsuperscript{2+} crossing the membrane moves two units of charge while one
+Li\textsuperscript{+} moves one. If the $z_X$ were dropped, these would be shares of the ion
+count, and a membrane that let through equal moles of each would look even-handed when in fact
+magnesium was doing two-thirds of the work. Returns \texttt{None} when either metal's crossing is
+unknown, or when the two weighted amounts sum to zero. On AE,
+$(t_\mathrm{Li}, t_\mathrm{Mg}) = (0.680, 0.320)$.
+
+\subsection{The two feed ratios}
+
+\textbf{\texttt{FeedRatio}} has two methods, both returning mol/mol:
+\texttt{find\_li\_over\_mg\_in\_the\_dilute(run)} and
+\texttt{find\_mg\_over\_li\_from\_the\_setup(run)}.
+
+There are two, kept apart by name because they answer different questions and are not
+reciprocals of one another.
+
+The \emph{measured} one is taken from the lab, at the first dilute minute for which both metals
+were reported:
+
+\begin{equation}
+  r_\mathrm{dil} \;=\;
+  \frac{m_\mathrm{Li}^{\,\mathrm{dil}}(t_0)\,/\,M_\mathrm{Li}}
+       {m_\mathrm{Mg}^{\,\mathrm{dil}}(t_0)\,/\,M_\mathrm{Mg}}
+  \label{eq:feed-measured}
+\end{equation}
+
+$t_0$ is the earliest minute present in both metals' dictionaries --- the intersection of the
+two, so a minute where the lab reported only one metal is skipped rather than half-used. Both
+amounts come from the same tank at the same minute, so the litres in \eqref{eq:amount} cancel and
+the milligrams carry the ratio on their own. This is the one permselectivity divides by.
+
+The \emph{set up} one is taken from the run's own feed columns, and is the other way up:
+
+\begin{equation}
+  r_\mathrm{setup} \;=\;
+  \frac{c_\mathrm{Mg}^{\,\mathrm{feed}}\,/\,M_\mathrm{Mg}}
+       {c_\mathrm{Li}^{\,\mathrm{feed}}\,/\,M_\mathrm{Li}}
+  \label{eq:feed-setup}
+\end{equation}
+
+using \texttt{mg\_feed\_mg\_l} and \texttt{li\_feed\_mg\_l}. This is the second of the two
+columns the polynomial is fitted over, and it is the intended ratio rather than the measured one
+on purpose: it is a dial setting that was chosen before the run, known exactly, and the same for
+every replicate at that point. Using a measured value would put lab noise into a design column
+and spread what should be one design point into a cloud. It goes into \texttt{Result} as
+\texttt{feed\_mg\_li\_ratio}, which is why the report's column is headed Mg/Li. Each returns
+\texttt{None} when its inputs are missing or its denominator is zero. On AE,
+$r_\mathrm{dil} = 0.852$ and $r_\mathrm{setup} = 1.428$.
+
+\subsection{Permselectivity}
+
+\textbf{\texttt{Permselectivity}} --- \texttt{find\_value(run)} $\rightarrow$
+dimensionless.
+
+The outcome the whole project maximises:
+
+\begin{equation}
+  P \;=\; \frac{t_\mathrm{Li} / t_\mathrm{Mg}}{r_\mathrm{dil}}
+  \label{eq:perm}
+\end{equation}
+
+The top is what the membrane delivered. The bottom is what it was offered. Dividing by
+$r_\mathrm{dil}$ is what makes the number mean anything across runs, and the arithmetic is worth
+following. Writing $n_X$ for the moles of each metal that crossed, \eqref{eq:transport} gives
+
+\begin{equation}
+  \frac{t_\mathrm{Li}}{t_\mathrm{Mg}} \;=\;
+  \frac{z_\mathrm{Li}\,n_\mathrm{Li}}{z_\mathrm{Mg}\,n_\mathrm{Mg}} \;=\;
+  \frac{n_\mathrm{Li}}{2\,n_\mathrm{Mg}}
+  \label{eq:transport-ratio}
+\end{equation}
+
+Now take a membrane with no preference at all, letting the two metals through in proportion to
+what the feed holds: $n_\mathrm{Li}/n_\mathrm{Mg} = r_\mathrm{dil}$. Then
+\eqref{eq:transport-ratio} is $r_\mathrm{dil}/2$, and \eqref{eq:perm} comes to exactly $0.5$ ---
+whatever the feed was. That is the number to read $P$ against: above $0.5$ the membrane preferred
+lithium, below it magnesium, and the factor of two is the charge weighting, not a choice.
+
+Without the division the baseline would slide. The same indifferent membrane would score
+$r_\mathrm{dil}/2$: that is $0.426$ at AE's feed, and $0.043$ at a feed ten times richer in
+magnesium. Two runs at different feeds could not then be set side by side. Because the feed ratio
+is one of the two model inputs, this is not a detail. The polynomial is asked how $P$ changes as
+the feed ratio moves; if the baseline moved with it too, the fitted feed-ratio term would be
+measuring the normalisation rather than the membrane, and every conclusion about feed sensitivity
+would be an artefact.
+
+Returns \texttt{None} when the transport numbers or the measured feed ratio are missing, or when
+$t_\mathrm{Mg}$ or $r_\mathrm{dil}$ is zero. On AE,
+$P = (0.680/0.320)/0.852 = 2.498$, about five times indifference.
+
+\subsection{Energy per mole of lithium}
+
+\textbf{\texttt{EnergyPerMoleOfLithium}} --- \texttt{find\_joules(run)} $\rightarrow$ J, and
+\texttt{find\_watt\_hours(run)} $\rightarrow$ W\,h/mol.
+
+Power is multiplied minute by minute before any averaging, because voltage and current do not
+move together and the average of a product is not the product of the averages. The same
+trapezium rule as \eqref{eq:charge} then runs over the minutes that carry both:
+
+\begin{equation}
+  E \;=\; 60 \sum_{k} \frac{U_k I_k + U_{k+1} I_{k+1}}{2}\,\bigl(t_{k+1} - t_k\bigr)
+  \qquad [\unit{J}]
+  \label{eq:energy}
+\end{equation}
+
+\begin{equation}
+  n_\mathrm{Li} \;=\; \frac{\Delta m_\mathrm{Li}^{\,\mathrm{conc}}}{1000\,M_\mathrm{Li}},
+  \qquad
+  e \;=\; \frac{E}{3600\,n_\mathrm{Li}}
+  \qquad [\unit{W\,h/mol}]
+  \label{eq:energy-per-mole}
+\end{equation}
+
+Per mole of lithium delivered, rather than per hour or per litre, so a short run and a long one,
+a gentle current and a hard one, can be compared on the thing being paid for. Note the set of
+minutes here is narrower than in \eqref{eq:charge}: a minute with a current but no voltage counts
+towards charge and not towards energy. \texttt{find\_joules} returns \texttt{None} on fewer than
+two minutes carrying both. \texttt{find\_watt\_hours} also returns \texttt{None} when
+$n_\mathrm{Li} \le 0$, since a concentrate that gained no lithium, or lost some, has no per-mole
+cost to quote. AE comes to $E = 14759.8\unit{J}$ and $e = 91.9\unit{W\,h/mol}$.
+
+\subsection{The balance gap}
+
+\textbf{\texttt{BalanceGap}} --- \texttt{find\_percent(run, metal)} $\rightarrow$ per cent,
+computed once for lithium and once for magnesium.
+
+\begin{equation}
+  L_X \;=\; m_X^{\,\mathrm{dil}}(t_\mathrm{first}) - m_X^{\,\mathrm{dil}}(t_\mathrm{last}),
+  \qquad
+  G_X \;=\; 100 \times
+  \frac{L_X - \bigl(\Delta m_X^{\,\mathrm{conc}} + \Delta m_X^{\,\mathrm{rinse}}\bigr)}{L_X}
+  \label{eq:gap}
+\end{equation}
+
+This corrects nothing. No other quantity reads it, no fit uses it, and no run is dropped on it.
+It exists so a reader can judge how much weight one run's numbers deserve.
+
+A large positive gap means the dilute lost metal that was not found in either of the other two
+tanks --- the readings do not add up, and the run's recovery and permselectivity should be read
+with suspicion. A negative gap means more was found than the dilute is recorded as having lost,
+which usually points at a weight or a concentration being wrong at one end. AT shows
+$-272.5\,\%$: its dilute barely changed, losing $5.05\unit{mg}$, while its concentrate gained
+$18.82\unit{mg}$, so a small absolute mismatch divides by a tiny denominator. AT's recovery of
+$2.3\,\%$ should be read in that light.
+
+The liquid carried off in the sample bottles is \emph{not} accounted for, by choice. Every sample
+drawn removes both volume and metal from a tank for good. Rather than model that removal --- which
+would mean tracking bottle volumes nobody recorded reliably --- it is left out, and the gap
+absorbs it. So a modest positive gap is expected, and the gap is a bound on the error rather than
+a measurement of it. A missing rinse figure is likewise counted as zero gained, which can only
+make the gap look worse; for a diagnostic, erring towards alarm is the honest direction. Fifteen
+of the sixteen used runs do have a rinse figure. Returns \texttt{None} when the dilute ends or
+the concentrate's gain cannot be worked out, or when $L_X \le 0$: a share of a loss means nothing
+where there was no loss, and a dilute that gained would turn the sign of the gap over.
+
+\subsection{Missing is never a guess}
+
+Every method above returns \texttt{None} when it cannot be worked out. Nothing is filled in with
+a zero, a mean, or a carried-forward value. A zero is a claim about the chemistry and would be
+fitted as one; \texttt{None} is a claim about the records and can be counted.
+
+\texttt{Calculator.\_find\_result} then applies one rule. Permselectivity and lithium recovery
+are what the model is fitted to, so a run missing either has nothing to contribute: the drop is
+written in the journal with the reason naming which of the two failed, and \texttt{None} comes
+back instead of a \texttt{Result}. Everything else may be \texttt{None} on a run that is
+otherwise sound, and that is not a reason to let the run go --- the report prints a dash in the
+cell and names the run under \emph{diagnostics missing} at the end. On the current data all
+sixteen surviving runs produce a complete row, so no drop happens at this stage and no dash is
+printed; the five runs the report says were dropped were dropped during preprocessing.
+
+\subsection{Every quantity in one table}
+
+\begin{table}[htbp]
+  \centering
+  \caption{The quantities, in dependency order. Only the fields of \texttt{Result} reach the
+    model or the report.}
+  \label{tab:quantities}
+  \small
+  \begin{tabular}{@{}l l l p{0.30\linewidth}@{}}
+    \toprule
+    Quantity & Class & Unit & Used for \\
+    \midrule
+    Volume in a tank & \texttt{VolumeInATank} & $\unit{L}$
+      & turning a concentration into a mass \\
+    Amount in a tank & \texttt{AmountInATank} & $\unit{mg}$
+      & one tank at one minute \\
+    Amount that crossed & \texttt{AmountThatCrossed} & $\unit{mg}$
+      & recovery, transport numbers, feed ratio, energy, balance gap \\
+    Lithium recovery & \texttt{LithiumRecovery} & \%
+      & fitted outcome; the recovery gate \\
+    Charge that passed & \texttt{ChargeThatPassed} & $\unit{mA\,h/cm^2}$
+      & diagnostic: how hard the run was driven in total \\
+    Current density & \texttt{CurrentDensity} & $\unit{mA/cm^2}$
+      & model input $J$; the setting the search optimises \\
+    Stack voltage & \texttt{StackVoltage} & $\unit{V}$
+      & fitted outcome; the $20\unit{V}$ gate \\
+    Transport numbers & \texttt{TransportNumbers} & ---
+      & permselectivity \\
+    Feed ratio, measured & \texttt{FeedRatio} & $\unit{mol/mol}$
+      & the denominator of permselectivity \\
+    Feed ratio, set up & \texttt{FeedRatio} & $\unit{mol/mol}$
+      & model input $R$; the second search setting \\
+    Permselectivity & \texttt{Permselectivity} & ---
+      & fitted outcome; what the search maximises \\
+    Energy per mole Li & \texttt{EnergyPerMoleOfLithium} & $\unit{W\,h/mol}$
+      & diagnostic: the electricity cost of a run \\
+    Balance gap, Li and Mg & \texttt{BalanceGap} & \%
+      & diagnostic only; corrects nothing \\
+    \bottomrule
+  \end{tabular}
+\end{table}

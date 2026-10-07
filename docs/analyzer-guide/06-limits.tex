@@ -1,0 +1,349 @@
+\section{What these runs can and cannot answer}
+\label{sec:limits}
+
+Everything in this section comes from the sixteen runs the analyzer used on the last
+run of \texttt{limodel analyze}, and every number was read off the code rather than
+recalled. Nothing here is a criticism of the code. The code is honest about what it
+was handed; this section is about what was handed to it.
+
+Twenty-one runs are in \texttt{data/runs.csv}. Sixteen reach the fitting. The five that
+do not are dealt with in \S\ref{sec:limits:waiting}.
+
+\subsection{The design is a cross, not a grid}
+\label{sec:limits:cross}
+
+A second-order polynomial in two settings wants a grid: every current density crossed
+with every feed ratio. These runs are not that. They are two arms meeting at one corner.
+
+The first arm moves current density with the feed ratio pinned at its lowest value,
+$R = 1.43\unit{mol/mol}$. Table~\ref{tab:limits:current-arm} is every run on it.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The current-density arm. Feed ratio $1.43\unit{mol/mol}$ on all thirteen runs.
+    Current density is the median supply current of the run over the membrane area, which
+    is why the levels are not round numbers.}
+  \label{tab:limits:current-arm}
+  \begin{tabular}{l l l}
+    \toprule
+    $J$ ($\unit{mA/cm^2}$) & Membrane & Runs \\
+    \midrule
+    4.50  & GO-10            & AJ \\
+          & Pristine         & AM \\
+    7.50  & GO-10            & AH, AI \\
+          & Pristine         & AL \\
+          & PDA/PEI/15CE/BT  & AR \\
+          & PDA-GO10/PEI/BT  & AS \\
+    13.67 & GO-10            & AE \\
+          & Pristine         & AK \\
+    25.67 & GO-10            & AN, AP \\
+          & Pristine         & AO, AQ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The second arm moves the feed ratio with the current density pinned at
+$13.67\unit{mA/cm^2}$, and it exists on one membrane only.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The feed-ratio arm. Current density $13.67\unit{mA/cm^2}$, membrane GO-10, on
+    all four runs. AE is the corner the two arms share.}
+  \label{tab:limits:ratio-arm}
+  \begin{tabular}{l l l}
+    \toprule
+    $R$ ($\unit{mol/mol}$) & Membrane & Run \\
+    \midrule
+    1.43  & GO-10 & AE \\
+    2.86  & GO-10 & AF \\
+    5.71  & GO-10 & AG \\
+    11.42 & GO-10 & AT \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Put the two tables side by side and the shape is plain. Four current-density levels exist
+and four feed-ratio levels exist, so a full grid would hold sixteen cells. Seven are
+occupied. Every run off the corner sits on one arm or the other, never in the middle of
+the field.
+
+This is why \texttt{SecondOrderPolynomial} has no $x_1x_2$ term. The code says so in a
+comment beside \texttt{TERMS\_IN\_ORDER}, and \texttt{CANDIDATE\_TERMS} in
+\texttt{fitted\_outcome.py} never offers one. An interaction term answers the question
+\emph{does the best current density depend on how much magnesium is in the feed}. To
+answer it, the feed ratio has to move at more than one current density. In these runs it
+moves at one. The term is not missing from the code because it was forgotten. It is
+missing because there is nothing in the data for it to be fitted to. That is a fact about
+the experiments, and no change to the code can repair it.
+
+There is a second thing the tables do not show, and it matters more than the missing
+interaction. The four runs at $25.67\unit{mA/cm^2}$ --- AN, AO, AP and AQ --- all started
+their concentrate at $5\unit{g/L}$. Every other run started it at $0.5\unit{g/L}$. AN and
+AO started from sodium chloride; AP and AQ from lithium chloride. So the top level of the
+current-density arm changes the concentrate at the same time as it changes the current,
+and \texttt{Result} carries neither \texttt{conc\_start\_salt} nor
+\texttt{conc\_start\_g\_l}, so the fitting cannot see the change and cannot allow for it.
+Any curvature the fit finds at the top of the current range is a current effect and a
+concentrate effect added together, with no way to tell the two apart.
+
+\subsection{What the bench gets when it repeats itself}
+\label{sec:limits:replicates}
+
+\texttt{ReplicateScatter} groups runs by membrane and by both settings rounded to two
+places, then pools the scatter inside the groups. Three groups have more than one run.
+Table~\ref{tab:limits:replicates} gives them with the gap between the two members.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Every repeated design point among the sixteen runs, and the gap between the
+    pair in each of the three fitted outcomes. Feed ratio is $1.43\unit{mol/mol}$ on all
+    six runs.}
+  \label{tab:limits:replicates}
+  \begin{tabular}{l l r r r r}
+    \toprule
+    & & $J$ & Recovery & & Voltage \\
+    Pair & Membrane & ($\unit{mA/cm^2}$) & (points) & $P$ & ($\unit{V}$) \\
+    \midrule
+    AH, AI & GO-10    & 7.50  & 1.07  & 0.356 & 0.33 \\
+    AN, AP & GO-10    & 25.67 & 13.18 & 0.596 & 1.63 \\
+    AO, AQ & Pristine & 25.67 & 3.55  & 0.087 & 0.20 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Pooled, GO-10's two repeats give a standard deviation of 6.61 points of recovery, 0.347
+in permselectivity and $0.832\unit{V}$, each on two degrees of freedom. Pristine's one
+repeat gives 2.51 points, 0.062 and $0.141\unit{V}$ on one degree of freedom. These are
+the numbers the report prints as the bench scatter.
+
+Now put the largest gap next to the effect the fit is chasing. Along the current-density
+arm, GO-10's recovery reads 21.1\% at $4.50\unit{mA/cm^2}$, 36.6\% and 37.7\% at 7.50,
+38.3\% at 13.67, and 39.5\% and 26.3\% at 25.67. Averaging the pairs, the step from 7.50
+to 13.67 is 1.2 points and the step from 13.67 to 25.67 is $-5.4$ points. The AN--AP gap
+is 13.2 points. It is larger than both of those steps put together, and larger than the
+whole span of the level averages above $4.50\unit{mA/cm^2}$. Only the first step, 4.50 to
+7.50 at 16.0 points, is bigger than the scatter at a single point.
+
+Permselectivity is no better placed. The AN--AP gap of 0.596 is twice the 0.288 that
+separates the 7.50 and 13.67 levels, and most of the 0.878 that separates 13.67 from
+25.67. Voltage is the one outcome that survives the comparison: the arm climbs
+$6.59 \to 10.39 \to 16.0 \to 17.73\unit{V}$ and every step is larger than the
+$1.63\unit{V}$ gap.
+
+So for two of the three outcomes the bench's own scatter at one setting is as large as the
+difference between settings. The report says the same thing in the language of error:
+GO-10's leave-one-out error is 0.561 against a scatter of 0.347 in permselectivity and
+7.12 points against 6.61 in recovery, and in both cases it prints \emph{this fit has
+earned no conclusion}. No amount of fitting fixes this. Until a repeat at a given setting
+lands closer than the difference between settings, a curve drawn through these points
+cannot be told apart from a curve drawn through the scatter.
+
+One caveat about that 13.2-point gap, because it is the number doing most of the damage.
+AN and AP are a repeat only in the two columns the grouping looks at. They differ in the
+concentrate they started from, sodium chloride against lithium chloride, both at
+$5\unit{g/L}$. The same is true of AO and AQ. AH and AI are the only pair in the data
+whose set-up columns all agree. So part of what is being charged to bench scatter may be
+a real effect of the starting concentrate --- which would be better news for the
+repeatability and worse news for the design, since it means the top current level is
+confounded twice over.
+
+\subsection{Two membranes cannot be fitted at all}
+\label{sec:limits:membranes}
+
+Of the sixteen runs, nine are GO-10 and five are Pristine. The other two are a single
+run each of PDA/PEI/15CE/BT (AR) and of PDA-GO10/PEI/BT (AS).
+\texttt{Surrogate.FEWEST\_RUNS} is 3: an intercept and one
+slope are two coefficients, and leave-one-out needs a row to spare. One run is not three,
+so the report prints
+
+\begin{quote}
+\texttt{not fitted}\\
+\texttt{PDA/PEI/15CE/BT has too few runs to fit,}\\
+\texttt{1 against the 3 a fit needs}
+\end{quote}
+
+and the same for PDA-GO10/PEI/BT. Both of those runs sit at the same point, GO-10's
+best-repeated setting of $7.50\unit{mA/cm^2}$ and $R = 1.43$. They give a permselectivity
+of 1.43 and 1.23 against GO-10's 2.39 and 2.03 and Pristine's 0.28 at that same point, so
+they are a reading, but one reading each. Nothing can be said about how either coating
+responds to current density or to feed ratio, because neither was ever moved on them.
+
+Pristine is fitted, but only in one direction. Its five runs never leave
+$R = 1.43\unit{mol/mol}$, so \texttt{DesignPoints.find\_dropped\_settings} reports the
+feed ratio as dropped and the report says so in words: \emph{fitted in current density,
+with the feed ratio held at one value across these runs and never tested}. A Pristine
+prediction at a higher feed ratio is not a cautious extrapolation. It is a number the
+runs contain no information about at all.
+
+\subsection{One polynomial over all sixteen runs}
+\label{sec:limits:pooled}
+
+The analyzer fits each membrane separately. The obvious alternative is one polynomial
+over everything, which is what \texttt{docs/polynomial.md} describes. It is worth running,
+because what comes back is the clearest statement of the problem.
+
+The fit uses the project's own machinery: \texttt{DesignPoints} to code the settings and
+\texttt{SecondOrderPolynomial} with all five of \texttt{TERMS\_IN\_ORDER}, forced in
+rather than grown term by term. The coded settings are logged, then centred and scaled so
+the lowest run sits at $-1$ and the highest at $+1$:
+
+\begin{align}
+  x_1 &= \frac{\ln\!\left(J / 10.747\right)}{0.87056}, \label{eq:limits:x1} \\
+  x_2 &= \frac{\ln\!\left(R / 4.0381\right)}{1.03972}. \label{eq:limits:x2}
+\end{align}
+
+So $x_1 = 0$ is $10.75\unit{mA/cm^2}$, one coded unit is a factor of 2.39 in current
+density, and one coded unit in $x_2$ is a factor of 2.83 in feed ratio. Fitting lithium
+recovery in percent over all sixteen runs gives
+
+\begin{equation}
+  \widehat{\text{recovery}} = 12.09 + 2.03\,x_1 - 12.80\,x_2 - 8.97\,x_1^2 + 2.55\,x_2^2 .
+  \label{eq:limits:pooled}
+\end{equation}
+
+Three numbers judge it:
+
+\begin{itemize}[nosep]
+  \item $R^2 = 0.299$. The surface accounts for 30\% of the variation in recovery across
+        the sixteen runs.
+  \item Leave-one-out error, through \texttt{LeaveOneOutError}, is 13.98 points.
+  \item The standard deviation of the sixteen recoveries themselves is 12.96 points.
+\end{itemize}
+
+The leave-one-out error is the larger. That has a plain meaning. Hold a run back, fit
+\eqref{eq:limits:pooled} to the other fifteen, predict the held-back run, and the
+prediction misses by more than you would have missed by ignoring the settings entirely
+and quoting the average recovery. The comparison can be made exactly: fitting an
+intercept alone under the same leave-one-out loop gives 13.39 points. So the four extra
+terms make out-of-sample prediction worse, not better. This is why
+\texttt{FittedOutcome.find\_best\_polynomial} grows a model one term at a time and stops
+when the next term does not lower the leave-one-out error --- a five-term fit forced onto
+sixteen runs spread over seven design cells is fitting the scatter.
+
+The surface's own peak says the same thing from another direction. Searched over the
+coded box the runs cover, \eqref{eq:limits:pooled} tops out at 27.6\% recovery, at
+$J = 11.9\unit{mA/cm^2}$ and $R = 1.43\unit{mol/mol}$. Four runs already measured beat it:
+AE at 38.3\%, AH at 36.6\%, AI at 37.7\% and AN at 39.5\%, all GO-10 at $R = 1.43$. A
+best-of-surface that sits more than ten points below four measurements in hand is not an
+optimum. It is an average of membranes that behave nothing alike, and it is also why the
+per-membrane report ends with \emph{no best setup: nothing inside the measured range
+cleared the lithium recovery floor}. GO-10's own fitted recovery peaks at 33.3\%, under
+the $35\%$ floor in \texttt{BestSetupUnderTheGates.RECOVERY\_FLOOR\_PCT}, while the same
+four runs measured above it.
+
+\texttt{docs/polynomial.md} allows the membrane in as a 0/1 indicator rather than as a
+separate fit per membrane. Adding one such column, 1 for GO-10 and 0 for everything else,
+to the same five terms gives
+
+\begin{equation}
+  \widehat{\text{recovery}} = -8.59 + 1.61\,x_1 - 18.13\,x_2 - 10.16\,x_1^2
+    + 9.21\,x_2^2 + 20.15\,g ,
+  \label{eq:limits:indicator}
+\end{equation}
+
+where $g = 1$ on a GO-10 run. $R^2$ rises from 0.299 to 0.819 and the leave-one-out error
+falls from 13.98 to 7.65 points, now comfortably under the 12.96-point standard deviation.
+One binary column explains more than all four setting terms together, and its coefficient
+is 20 points of recovery --- larger than anything either setting does across its whole
+measured range.
+
+Read that carefully. It does not mean \eqref{eq:limits:indicator} is a good model. It
+means the membrane is the dominant variable in this data set and the two dialled settings
+are secondary to it. The indicator fit also still leans on the Pristine runs to pin
+$x_2^2$, and Pristine never left $R = 1.43$, so the $+9.21$ on $x_2^2$ is carried by GO-10
+alone. The per-membrane approach the analyzer actually takes is the more honest reading of
+the same fact: if the membrane is worth 20 points, fit the membranes apart.
+
+\subsection{The runs waiting on the lab}
+\label{sec:limits:waiting}
+
+Five of the twenty-one runs are dropped, all for the same reason, which the journal
+records as \emph{no lab results at both ends}. Without a sample at the first and last
+minute there is no amount that crossed, so there is no recovery and no permselectivity to
+fit. Table~\ref{tab:limits:waiting} is the five, with the settings read from their own
+rows and power logs.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The dropped runs and the settings they were made at. Current density is the
+    median of each power log over the $6\unit{cm^2}$ area; all five come out at
+    $13.5\unit{mA/cm^2}$.}
+  \label{tab:limits:waiting}
+  \begin{tabular}{l l r r}
+    \toprule
+    Run & Membrane & $J$ ($\unit{mA/cm^2}$) & $R$ ($\unit{mol/mol}$) \\
+    \midrule
+    AX & Pristine & 13.5 & 2.86 \\
+    AY & Pristine & 13.5 & 5.71 \\
+    AU & Pristine & 13.5 & 11.42 \\
+    AV & Pristine & 13.5 & 17.13 \\
+    AW & GO10     & 13.5 & 17.13 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Four of the five are a Pristine feed-ratio sweep at one current density: 2.86, 5.71, 11.42
+and 17.13, the same ladder GO-10 already has, with one rung added past its top. That is
+exactly the dimension \S\ref{sec:limits:cross} found missing --- Pristine currently has no
+feed-ratio movement at all, which is why the report calls the feed ratio dropped and
+never tested on it. The fifth, AW, extends GO-10's own sweep to 17.13.
+
+Their current density, $13.5\unit{mA/cm^2}$, is the same nominal setting as the existing
+feed-ratio arm at $13.67\unit{mA/cm^2}$; the $0.17$ difference is the median of one power
+log against another, not a different dial position. The concentrate start on all five is
+lithium chloride at $0.5\unit{g/L}$, matching the existing arm, so these runs do not carry
+the confound described in \S\ref{sec:limits:cross}.
+
+Two things about them are worth knowing before the results land. First, the sweep is still
+a sweep: it adds a second arm at the same current density, so after it arrives the feed
+ratio will move on two membranes but still at one current density, and there will still be
+no support for an interaction term. Second, AW's membrane is spelled \texttt{GO10} in
+\texttt{data/runs.csv} while the nine fitted runs are spelled \texttt{GO-10}. The field is
+a plain string --- \texttt{cem} in \texttt{models/run.py} and in the schema --- and
+\texttt{Surrogate.find\_membranes} groups on it exactly as written, so AW will arrive as a
+fourth membrane with one run and be refused for having too few runs, unless the spelling
+is made to match.
+
+\subsection{The balance gaps, and what they mean for quoting any number}
+\label{sec:limits:gaps}
+
+\texttt{BalanceGap} reports, as a percentage, how much of what the dilute lost was never
+found in the concentrate and the rinse. It is a diagnostic. Nothing is ever corrected by
+it. But it is the best single check on whether the lab numbers a run was built from hang
+together, so it belongs in any judgement of how far these results can be pushed.
+
+Over the sixteen runs the lithium gaps run from $-272.5\%$ to $+71.3\%$, with a median of
+$+8.5\%$. Ten are positive, six negative. Seven of the sixteen are more than 25\% away
+from zero in either direction, and only five are inside $\pm 10\%$. The magnesium gaps are
+worse: $-76.8\%$ to $+67.6\%$, median $+17.5\%$, ten of sixteen outside $\pm 25\%$ and
+only three inside $\pm 10\%$.
+
+Both signs have a meaning, and only one of them is benign.
+
+A positive gap means the dilute lost more than the other two tanks gained. That is what
+hold-up looks like: liquid left in sample bottles and lines. \texttt{BalanceGap} counts an
+unweighed rinse as zero gain, which it explains as the honest way for a diagnostic to be
+wrong, and that choice pushes gaps positive. So a modest positive gap is roughly what a
+sound run should show, and the median of $+8.5\%$ in lithium is consistent with that.
+
+A negative gap means the concentrate and rinse together gained more metal than the dilute
+lost. As mass, that cannot happen. Six runs show it in lithium and six in magnesium, so in
+those runs something in the concentrations, the dilution factors or the tank weights does
+not reconcile, and the amounts that crossed --- the numerator of both permselectivity and
+recovery --- inherit that.
+
+Two further points about size. The gap is a ratio, so it blows up when the denominator is
+small. AT's $-272.5\%$ is the clearest case: its dilute lost $5.1\unit{mg}$ of lithium
+over the whole run while the concentrate gained $18.8\unit{mg}$. A $14\unit{mg}$
+discrepancy on a $5\unit{mg}$ loss is a huge percentage and a small absolute error, and AT
+is the highest feed ratio in the data, the far end of the feed-ratio arm. The point at the
+end of the lever is the one with the least lithium movement behind it. The other is that
+the magnesium gaps are consistently larger than the lithium ones, which bears directly on
+permselectivity, since $P$ divides a lithium transport number by a magnesium one and the
+magnesium side is the noisier of the two.
+
+The practical reading is narrow and worth stating plainly. A recovery or a permselectivity
+quoted from one of these runs should be quoted next to that run's gaps. Five of sixteen
+runs balance lithium inside $\pm 10\%$ and three balance magnesium that well. The report
+prints both gap columns for every run for this reason, and a number taken out of that
+table without them is being quoted more precisely than it was measured.

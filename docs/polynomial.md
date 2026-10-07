@@ -22,7 +22,7 @@ is in the feed.
 |---|---|---|---|
 | `P` | Permselectivity, Li over Mg | — | the outcome |
 | `J` | Current density | mA/cm² | 3, 6, 12, 24 |
-| `R` | Mg/Li ratio in the diluate | mol/mol | 5, 10, 20, 40, 60 |
+| `R` | Mg/Li ratio in the dilute | mol/mol | 5, 10, 20, 40, 60 |
 
 `P` above 1 means the membrane favours Li over Mg relative to what the feed offered:
 
@@ -33,7 +33,7 @@ P = ─────────────────        t_Li = n_Li / (n_
 ```
 
 where `n` is the moles each ion added to the concentrate over the run, and `c` is the molar
-concentration measured in the diluate at minute 0.
+concentration measured in the dilute at minute 0.
 
 The membrane is not a polynomial variable — it is a category (GO-10, pristine, PDA/PEI/15CE,
 PDA/GO10/PEI). It enters either as a 0/1 indicator or by fitting the equation once per

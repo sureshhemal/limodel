@@ -6,7 +6,7 @@ from limodel.models.sample import Sample
 
 
 class TankReading(BaseModel):
-    """What was measured on the concentrate, diluate or rinse.
+    """What was measured on the concentrate, dilute or rinse.
 
     A sample is drawn from a tank at a moment, so it hangs off the reading taken at
     that moment. Most readings have none: the tanks are logged far more often than a

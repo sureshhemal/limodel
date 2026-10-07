@@ -11,7 +11,7 @@ The CSV files hold only what was set, measured at the rig, or reported by the la
 |---|---|---|---|
 | `runs.csv` | experiment | Membranes, feed, starting concentrate, rinse, flow, area, cell pairs, tare weights | before the run |
 | `stack_readings.csv` | time mark of a run | The power log: supply and multimeter voltage and current | during the run |
-| `tank_readings.csv` | tank at a time mark | Conductivity, pH, temperature, weight for one of concentrate, diluate or rinse | during the run |
+| `tank_readings.csv` | tank at a time mark | Conductivity, pH, temperature, weight for one of concentrate, dilute or rinse | during the run |
 | `samples.csv` | sample | Li, Mg, Na, K, Ca (ICP) and TOC | by the lab, later |
 
 ```
@@ -43,7 +43,7 @@ Rules for every file:
 | `run_date` | date | YYYY-MM-DD | ✓ | Date of the run |
 | `cem` | text | | ✓ | Cation exchange membrane |
 | `aem` | text | | ✓ | Anion exchange membrane |
-| `li_feed_mg_l` | numeric | mg/L | ✓ | Nominal Li in the feed; the measured value is the t = 0 diluate sample |
+| `li_feed_mg_l` | numeric | mg/L | ✓ | Nominal Li in the feed; the measured value is the t = 0 dilute sample |
 | `mg_feed_mg_l` | numeric | mg/L | ✓ | Nominal Mg in the feed |
 | `licl_g_l` | numeric | g/L | | LiCl actually weighed in |
 | `mgcl2_6h2o_g_l` | numeric | g/L | | MgCl₂·6H₂O actually weighed in |
@@ -56,7 +56,7 @@ Rules for every file:
 | `area_cm2` | numeric | cm² | ✓ | Membrane area per cell pair |
 | `cell_pairs` | integer | | ✓ | Number of cell pairs |
 | `tare_conc_g` | numeric | g | ✓ | Concentrate bucket + stirrer, for this run |
-| `tare_dil_g` | numeric | g | ✓ | Diluate bucket + stirrer |
+| `tare_dil_g` | numeric | g | ✓ | Dilute bucket + stirrer |
 | `tare_rinse_g` | numeric | g | ✓ | Rinse bucket + stirrer |
 | `include` | boolean | | ✓ | Whether the run is used |
 | `notes` | text | | | |
@@ -158,19 +158,19 @@ Each `New_set_Mg2+(…)_<CODE>` sheet has the same layout.
 | Time and power | A (hour), B (minute), C (supply V), D (supply A), E (multimeter V), F (multimeter mA) | `stack_readings.csv` |
 | Hourly summary | G–L | **skipped** — the code calculates these |
 | Concentrate | M (sample ID), N (conductivity), O (pH), P (temperature), Q (weight), R–W (lab results) | `tank_readings.csv` + `samples.csv`, tank `conc` |
-| Diluate | X (sample ID), Y, Z, AA, AB, AC–AH | `tank_readings.csv` + `samples.csv`, tank `dil` |
+| Dilute | X (sample ID), Y, Z, AA, AB, AC–AH | `tank_readings.csv` + `samples.csv`, tank `dil` |
 
 **Rinse block** — below the main table, starting at the row whose column A says `Rinse`. Its position depends on the run length (about row 36 for a 3-sample run, 56 for 5, 88 for 7, 120 for 9). It reuses the concentrate columns, and its rows match the main table by minute. Goes to `tank_readings.csv` and `samples.csv` with tank `rinse`.
 
 Anything below the rinse block (the I–V sweep, the limiting-current table, the summary tables to the right) is **not** copied.
 
-Sample IDs run two per sampling time: odd numbers are concentrate, even are diluate, and the rinse starts at 17 (or 19 in runs with nine sampling times, where the main table has used 1–18). Gaps in the numbering are normal.
+Sample IDs run two per sampling time: odd numbers are concentrate, even are dilute, and the rinse starts at 17 (or 19 in runs with nine sampling times, where the main table has used 1–18). Gaps in the numbering are normal.
 
 ### Things to watch for
 
 - **Sample IDs must carry the run's own code.** Mislabelled IDs have already appeared in the sheets (`J10` for `AJ10`, `K18` for `AK18`, and a whole rinse block labelled with the previous run's code).
 - **Copy raw readings, never the calculated block.** Some calculated cells have values typed over the formula, so they disagree with the raw reading they came from.
 - **Blank, never 0**, for a measurement that wasn't taken.
-- **Use the measured feed.** The nominal feed goes in `runs.csv`; the real feed concentration is the t = 0 diluate sample.
+- **Use the measured feed.** The nominal feed goes in `runs.csv`; the real feed concentration is the t = 0 dilute sample.
 - **Tares change between runs**, so take them from that run's own header block.
 - **Different starting concentrate** (a different salt or strength) makes a run not comparable with the rest. Record it in `conc_start_salt` / `conc_start_g_l` and consider `include = false`.
