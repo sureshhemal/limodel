@@ -822,21 +822,101 @@ output at the centre of the design.
 <details>
 <summary><strong>How</strong></summary>
 
-For each input $`v`$ (current density $`i`$ or $`\ln i`$, and $`\ln R`$):
+#### What this step starts from
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`i`$ | current density, in mA/cm² | calculation: [Current density](#current-density) |
+| $`R`$ | Mg/Li feed ratio, molar | calculation: [Feed ratio](#feed-ratio) |
+| the runs being fitted | the GO-10 runs that are included and whose three outputs could all be worked out | CSV: `runs.csv` → `cem`, `include`<br>Model: `Run.cem`, `Run.include`<br>outputs: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage) |
+
+Step 4 reads nothing new from the files: it reshapes Step 1's two inputs.
+
+#### Taking logarithms
+
+$$\displaystyle v_1 = i \;\text{ or }\; \ln i, \qquad v_2 = \ln R$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`v_1`$ | current density on the scale the fit uses; both scales are tried in Step 5 | calculation: from $`i`$ |
+| $`v_2`$ | the feed ratio on the scale the fit uses | calculation: from $`R`$ |
+| $`\ln`$ | the natural logarithm: $`\ln 2 = 0.693`$, so every doubling adds 0.693 | notation |
+
+#### Coding
+
+For each input $`v`$, that is $`v_1`$ and then $`v_2`$:
 
 $$\displaystyle x = \frac{v - v_{\text{mid}}}{v_{\text{half}}}, \qquad v_{\text{mid}} = \frac{v_{\max} + v_{\min}}{2}, \qquad v_{\text{half}} = \frac{v_{\max} - v_{\min}}{2}$$
 
-with $`v_{\min}`$ and $`v_{\max}`$ the lowest and highest values among the runs being fitted. A
-coded value turns back into a real one by $`v = v_{\text{mid}} + v_{\text{half}}\,x`$, which is
-how every prediction is reported.
+Variables:
 
-Whether coding has removed the overlap is checked with the variance inflation factor of each
-column $`j`$ of a fitted model:
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`x`$ | the coded input: −1 at the lowest value among the fitted runs, 0 at the middle, +1 at the highest. $`x_1`$ is coded current density, $`x_2`$ coded $`\ln R`$ | calculation: the first equation above |
+| $`v`$ | the input being coded: $`v_1`$ or $`v_2`$ | calculation: [Taking logarithms](#taking-logarithms) |
+| $`v_{\text{mid}}`$ | the middle of the input's range: becomes 0 | calculation: the second equation above |
+| $`v_{\text{half}}`$ | half the width of the range: becomes 1 | calculation: the third equation above |
+| $`v_{\min}`$, $`v_{\max}`$ | the lowest and highest values of $`v`$ among the runs being fitted | calculation: over the runs being fitted, see [What this step starts from](#what-this-step-starts-from) |
+
+The scales are fixed by the runs being fitted, so they change when runs are added: a new run beyond
+the old range moves $`v_{\min}`$ or $`v_{\max}`$, and every coded value with it.
+
+#### Turning a coded value back into a real one
+
+Every prediction is reported in real units:
+
+$$\displaystyle v = v_{\text{mid}} + v_{\text{half}}\, x, \qquad i = e^{v_1} \;\text{ when } v_1 = \ln i, \qquad R = e^{v_2}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`x`$, $`v_{\text{mid}}`$, $`v_{\text{half}}`$ | as in [Coding](#coding) | calculation |
+| $`e^{v}`$ | the exponential, which undoes the natural logarithm: $`e^{\ln i} = i`$ | notation |
+
+#### Checking that coding removed the overlap
+
+For each column $`j`$ of a fitted model:
 
 $$\displaystyle \text{VIF}_j = \frac{1}{1 - r_j^2}$$
 
-where $`r_j^2`$ is the share of column $`j`$'s variation that the model's other columns explain.
-A VIF of 1 means no overlap at all; above about 10, that column's coefficient cannot be trusted.
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\text{VIF}_j`$ | the variance inflation factor of column $`j`$: how many times larger its coefficient's variance is than it would be with no overlap. 1 means no overlap at all; above about 10, that column's coefficient cannot be trusted | calculation: the equation above |
+| $`j`$ | one column of the fitted model, other than the intercept: $`x_1`$, $`x_2`$, $`x_1^2`$ or $`x_2^2`$ | the model chosen in Step 5 |
+| $`r_j^2`$ | the share of column $`j`$'s variation that the model's other columns explain: the R² of a least-squares fit of column $`j`$ on the other columns | calculation: that fit |
+
+#### Preparing the inputs, in simple terms
+
+> **Logarithms: equal steps for equal factors.** The lab doubled the ratio each time: 5, 10, 20, 40.
+> On an ordinary ruler those are unequal steps (5, then 10, then 20 apart). On a log scale every
+> doubling is the same step, as each octave on a piano is the same distance up the keyboard:
+>
+> | R | 5 | 10 | 20 | 40 |
+> |---|---|---|---|---|
+> | ln R | 1.61 | 2.30 | 3.00 | 3.69 |
+>
+> Each step is 0.69, which is ln 2. Current density (3, 6, 12, 24) was doubled the same way.
+>
+> **Coding: one shared ruler from −1 to +1.** Current density runs from 3 to 24 mA/cm²; ln R from
+> 1.61 to 3.69. Coding puts both on the same ruler: the lowest tested value becomes −1, the highest
+> +1, the middle 0. For current density: middle = (24 + 3) / 2 = 13.5, half-width = (24 − 3) / 2
+> = 10.5, so 12 mA/cm² becomes (12 − 13.5) / 10.5 = −0.14.
+>
+> It helps in two ways. Every coefficient then means the same thing: how much the output changes
+> from the middle of what was tested to its edge, so they can be compared. And it untangles an
+> input from its square. On the raw scale both rise together (3 → 9, 24 → 576), so least squares
+> cannot tell which one deserves the credit. After coding, $`x`$ runs from −1 to +1 while
+> $`x^2`$ is high at both ends and low in the middle, so the two move independently.
+>
+> **VIF: is a column already explained by the others?** If one column can be predicted from the
+> others, the fit cannot tell which of them is doing the work, and its coefficient wobbles. A VIF
+> of 1 means the column is entirely its own; a VIF of 10 means the others already explain 90 % of
+> it.
 
 </details>
 
@@ -845,6 +925,41 @@ A VIF of 1 means no overlap at all; above about 10, that column's coefficient ca
 
 To show: the coding formula for each input with its $`v_{\text{mid}}`$ and $`v_{\text{half}}`$, and
 a VIF table for each chosen model.
+
+#### Where the GO-10 inputs stand
+
+The two inputs of the GO-10 runs with lab results, from the data files:
+
+| Run | $`i`$ (mA/cm²) | $`\ln i`$ | $`R`$ (molar) | $`\ln R`$ |
+|---|---|---|---|---|
+| AJ | 3.06 | 1.119 | 1.428 | 0.356 |
+| AH | 6.10 | 1.808 | 1.428 | 0.356 |
+| AI | 6.11 | 1.809 | 1.428 | 0.356 |
+| AE | 12.12 | 2.495 | 1.428 | 0.356 |
+| AF | 12.11 | 2.494 | 2.855 | 1.049 |
+| AG | 12.10 | 2.494 | 5.711 | 1.742 |
+| AT | 12.04 | 2.488 | 11.42 | 2.435 |
+| AN | 24.11 | 3.182 | 1.428 | 0.356 |
+| AP | 24.06 | 3.180 | 1.428 | 0.356 |
+
+Their coding depends on one open decision: whether AN and AP, whose concentrate started
+differently (Step 2), are among the runs being fitted.
+
+| Input | Fitted runs | $`v_{\min}`$ | $`v_{\max}`$ | $`v_{\text{mid}}`$ | $`v_{\text{half}}`$ |
+|---|---|---|---|---|---|
+| $`\ln i`$ | with AN, AP | 1.119 (AJ) | 3.182 (AN) | 2.151 | 1.032 |
+| $`\ln i`$ | without AN, AP | 1.119 (AJ) | 2.495 (AE) | 1.807 | 0.688 |
+| $`i`$ | with AN, AP | 3.06 | 24.11 | 13.58 | 10.52 |
+| $`i`$ | without AN, AP | 3.06 | 12.12 | 7.59 | 4.53 |
+| $`\ln R`$ | either | 0.356 (ratio 5) | 2.435 (AT, ratio 40) | 1.396 | 1.040 |
+
+- **With AN and AP**, current density is coded over 3–24 mA/cm². **Without them**, over 3–12, and
+  any prediction above 12.1 mA/cm² is outside the fitted range.
+- **The ratio ends at AT (ratio 40)** because AW (ratio 60) has no lab results yet. When they
+  arrive, $`v_{\max}`$ becomes $`\ln 17.13 = 2.841`$ and every coded ratio shifts.
+- **Coded values are not exactly the design levels**, because current density is measured: AT
+  codes to 0.98 rather than 1.00 when AN and AP are left out.
+- **The VIFs** wait for Step 5 to choose the models.
 
 #### Example with made-up runs
 
