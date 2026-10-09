@@ -1,12 +1,74 @@
 # Plan for building the model
 
-The steps from preprocessed data to a recommended setting. Each step answers four questions:
-**What** it produces, **Why** it is needed, **How** it is done, and its **Results**: what it shows,
-or will show once it is done. The reviewers asked for quantitative results rather than description,
-so every Results section is a number, a table or a figure.
+The steps from the lab's data to a polynomial for lithium recovery, and from the polynomial to the
+setup that recovers the most lithium. Each step answers four questions: **What** it produces,
+**Why** it is needed, **How** it is done, and its **Results**: what it shows on the lab's real
+runs. The reviewers asked for quantitative results rather than description, so every Results
+section is a number, a table or a figure.
 
-**Scope: GO-10 membranes only.** The model is built from the GO-10 runs; runs on every other
-membrane are left out.
+**Scope: GO-10 membranes, lithium recovery.** The model is built from the GO-10 runs; runs on every
+other membrane are left out. Its one output is lithium recovery, and its job is to suggest the
+setup that recovers the most lithium. Permselectivity and the stack voltage can be modelled the
+same way later.
+
+## The path at a glance
+
+From the data files to the polynomial, every step and every decision on one page. Read it from
+top to bottom; each step is explained in full below.
+
+```mermaid
+%%{init: {"flowchart": {"wrappingWidth": 360}, "themeVariables": {"edgeLabelBackground": "#dfe6ee"}}}%%
+flowchart TD
+    start(["Start"])
+    files[/"Input: the four data files<br>runs.csv · stack_readings.csv<br>tank_readings.csv · samples.csv"/]
+    keep{"GO-10 run, marked to include,<br>with its readings<br>and lithium lab results?"}
+    leave["Leave the run out,<br>and note why"]
+    row["<b>Step 1</b> · Work out one row per run<br>inputs: current density, Mg/Li ratio<br>output: lithium recovery"]
+    look["<b>Step 2</b> · Plot lithium recovery<br>against each input"]
+    noise["<b>Step 3</b> · Measure the scatter in recovery<br>between repeat runs: the pure error"]
+    prep["<b>Step 4</b> · Take logarithms and<br>rescale both inputs to −1 … +1"]
+    ladder["<b>Step 5</b> · Fit the ladder of models M0 to M4<br>for lithium recovery"]
+    sift["Keep the models whose every term counts<br>and whose misses are no bigger than the noise;<br>take the one that best predicts runs it has not seen"]
+    simpler{"Is a simpler model<br>almost as good?"}
+    take["Take the simpler model"]
+    check["<b>Step 6</b> · Check the misses<br>and each run's influence"]
+    pattern{"Do the misses<br>show a pattern?"}
+    logscale["Model recovery<br>on a log scale"]
+    decides{"Does one run<br>decide the result?"}
+    lab{"Does the lab find<br>a mistake in that run?"}
+    fix["Correct the run's readings"]
+    trees["<b>Step 7</b> · Fit a flexible model, boosted trees,<br>and test it the same way"]
+    better{"Do the trees predict<br>clearly better?"}
+    shape["The polynomial is missing a shape:<br>find where, and add the term"]
+    poly[/"Output: one polynomial<br>for lithium recovery"/]
+    stop(["End"])
+
+    start --> files --> keep
+    keep -->|No| leave
+    keep -->|Yes| row --> look --> noise --> prep --> ladder --> sift --> simpler
+    simpler -->|Yes| take --> check
+    simpler -->|No| check
+    check --> pattern
+    pattern -->|Yes| logscale --> ladder
+    pattern -->|No| decides
+    decides -->|Yes| lab
+    lab -->|Yes| fix --> row
+    lab -->|No, keep it| trees
+    decides -->|No| trees
+    trees --> better
+    better -->|Yes| shape --> ladder
+    better -->|No| poly --> stop
+```
+
+| Shape | Means |
+|---|---|
+| Rounded box | where the path starts and ends |
+| Slanted box | what goes in (the data files) and what comes out (the polynomial) |
+| Rectangle | something that is done |
+| Diamond | a question; the path follows the answer, Yes or No |
+
+The polynomial is then used in Step 8, to find the setup with the highest predicted recovery, and
+tested in Step 9 on runs it has never seen.
 
 See [polynomial.md](polynomial.md) for the equation itself; the per-run quantities are defined in
 [Step 1](#step-1-one-row-of-numbers-per-run).
@@ -20,50 +82,42 @@ See [polynomial.md](polynomial.md) for the equation itself; the per-run quantiti
 | 5. Fit a ladder of candidate models and compare them | to do |
 | 6. Check the chosen model | to do |
 | 7. Compare with a flexible model | to do |
-| 8. Find the best setting under the limits | to do |
+| 8. Find the setup that recovers the most lithium | to do |
 | 9. Test on runs the model has never seen | to do |
 
-<details>
-<summary><strong>The made-up runs used in the examples</strong></summary>
+<details open>
+<summary><strong>The GO-10 runs used in the results</strong></summary>
 
-Every step ends with an example worked on made-up numbers, so that what each step produces can be
-seen before the real runs go through it. Nothing in these examples is real data. The ten runs were
-invented to look like the lab's design (a cross around a base run at 12 mA/cm² and ratio 5, with
-repeats) and generated from known equations plus random noise. Because the true equations are
-known, the examples also show whether the method finds them.
+Every Results section is worked on the lab's real GO-10 runs. They are the GO-10 runs fed with
+400 mg/L of lithium that passed the standard charge, about 48.5 mA·h per cm² of membrane. Every
+number is taken from the lab's workbook (`ED_data_from M-BF(Updated).xlsx`).
 
-| Run | Current density (mA/cm²) | Mg/Li ratio (mass) | P | Lithium recovery (%) | Highest stack voltage (V) |
+| Run | Current density (mA/cm²) | Mg/Li ratio, mass (molar) | Concentrate at the start | Lithium recovery (%) | Highest stack voltage (V) |
 |---|---|---|---|---|---|
-| M1 | 3 | 5 | 5.59 | 24.0 | 7.2 |
-| M2 | 6 | 5 | 5.82 | 34.6 | 8.6 |
-| M3 | 6 | 5 | 6.09 | 34.9 | 8.9 |
-| M4 | 12 | 5 | 4.31 | 50.3 | 12.4 |
-| M5 | 12 | 5 | 4.94 | 47.8 | 12.3 |
-| M6 | 12 | 5 | 4.89 | 49.2 | 12.4 |
-| M7 | 24 | 5 | 2.02 | 62.0 | 19.6 |
-| M8 | 12 | 10 | 3.77 | 43.9 | 11.6 |
-| M9 | 12 | 20 | 3.05 | 37.8 | 11.1 |
-| M10 | 12 | 40 | 2.60 | 32.9 | 10.6 |
+| AJ | 3.06 | 5 (1.43) | LiCl, 0.5 g/L | 22.87 | 6.60 |
+| AH | 6.09 | 5 (1.43) | LiCl, 0.5 g/L | 36.59 | 10.03 |
+| AI | 6.11 | 5 (1.43) | LiCl, 0.5 g/L | 37.66 | 10.22 |
+| AE | 12.12 | 5 (1.43) | LiCl, 0.5 g/L | 38.27 | 15.93 |
+| BD | 12.07 | 5 (1.43) | LiCl, 0.5 g/L | 29.06 | 15.85 |
+| BE | 12.05 | 5 (1.43) | LiCl, 0.5 g/L | 28.09 | 16.17 |
+| AF | 12.12 | 10 (2.86) | LiCl, 0.5 g/L | 18.15 | 15.89 |
+| AG | 12.11 | 20 (5.71) | LiCl, 0.5 g/L | 8.18 | 13.88 |
+| AT | 12.04 | 40 (11.42) | LiCl, 0.5 g/L | 3.69 | 12.63 |
+| AW | 12.03 | 60 (17.13) | LiCl, 0.5 g/L | 2.53 | 12.44 |
+| AN | 24.11 | 5 (1.43) | **NaCl, 5 g/L** | 39.50 | 18.32 |
+| AP | 24.06 | 5 (1.43) | **LiCl, 5 g/L** | 26.32 | 16.79 |
 
-The equations they were generated from:
+Where each number comes from in the workbook, on each run's sheet: recovery is the whole-run value
+in column AZ (the last concentrate sample against the first); current density is the average of
+the hourly values in column H; the voltage is the highest multimeter reading in column E.
 
-$$\displaystyle P = 6.0 - 1.6 \left(\ln \frac{i}{5}\right)^2 - 0.9 \ln \frac{R}{5}$$
-
-$$\displaystyle \text{recovery} = \left(22 + 13 \log_2 \frac{i}{3}\right) \left(\frac{R}{5}\right)^{-0.15}$$
-
-$$\displaystyle U_{\max} = 5 + 0.62\, i - 0.9 \ln \frac{R}{5}$$
-
-Variables:
-
-| Symbol | What it is | Where it comes from |
-|---|---|---|
-| $`i`$ | current density, in mA/cm² | made up, as in the table |
-| $`R`$ | Mg/Li feed ratio, by mass | made up, as in the table |
-| $`P`$, recovery, $`U_{\max}`$ | the three outputs, as defined in Step 1 | generated by these equations, plus noise |
-| noise | random scatter added to each run: standard deviation 0.25 in P, 1.5 points in recovery, 0.3 V in voltage | made up, so that Step 3 has something to find |
-
-So the made-up P is highest at 5 mA/cm² and falls as magnesium rises; recovery rises with current
-and falls with magnesium; voltage rises with current.
+- **Not yet in the data files:** BD and BE (repeats of AE's settings, run two months later), and
+  AW's lab results. Once they are, every result is redone from the data files by the project's own
+  code, and should agree with these.
+- **AN and AP started with a stronger concentrate.** They are kept, drawn apart in every figure,
+  and each result is also checked without them.
+- **Not used:** BA (ran 18 hours, so it passed a different charge), and BB, BC and BF (other
+  feeds).
 
 </details>
 
@@ -71,31 +125,30 @@ and falls with magnesium; voltage rises with current.
 
 ## Step 1: One row of numbers per run
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
 For every GO-10 run, one row of numbers: the two inputs the model learns from, current density
-$`i`$ and Mg/Li feed ratio $`R`$, and the three outputs it predicts: permselectivity $`P`$, lithium
-recovery and highest stack voltage $`U_{\max}`$. Charge per lithium offered $`q`$ is worked out
+$`i`$ and Mg/Li feed ratio $`R`$, and the output it predicts, lithium recovery. Charge per lithium
+offered $`q`$ is worked out
 for every run as well, to describe it, but is not a model input (see
 [Charge per lithium offered](#charge-per-lithium-offered)).
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 A model learns only from input–output pairs, one per experiment, and everything after this step
 (the fit, the checks, the recommendation) inherits any error in these numbers. So every number is
 calculated from the raw readings (tank weights, lab concentrations, meter readings) by stated
 equations, never copied from a derived cell, and every definition follows the lab's workbook so
-that each result can be checked against the lab's own. The three outputs are the ones the research
-question needs: P is what is maximised; recovery and voltage are the limits, and a limit can only
-be respected if it can be predicted.
+that each result can be checked against the lab's own. Lithium recovery is the output because the
+question is which setup harvests the most of the lithium on offer.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 Each symbol below has one meaning only. Current density is $`i`$, never $`J`$.
@@ -119,21 +172,19 @@ past the electrodes and is not used in any calculation.
 
 #### The row each run produces
 
-Every run is boiled down to six numbers: three inputs and three outputs. Three of them are read
-almost straight from the CSV files. The other three need the building blocks that follow, which is
-why the building blocks come first.
+Every run is boiled down to four numbers: the two inputs the model learns from, $`q`$, which
+describes the run, and the one output. Two of them are read almost straight from the CSV files. The
+other two need the building blocks that follow, which is why the building blocks come first.
 
 | Number | Role | Calculated from |
 |---|---|---|
 | Current density, $`i`$ | input | average current through the stack (`stack_readings.csv` → `meter_current_ma`) and membrane area (`runs.csv` → `area_cm2`); no building block needed |
 | Mg/Li feed ratio, $`R`$ | input | planned feed concentrations (`runs.csv` → `li_feed_mg_l`, `mg_feed_mg_l`); no building block needed |
 | Charge per lithium offered, $`q`$ | input | **[charge passed](#building-blocks)**, the number of cell pairs (`runs.csv` → `cell_pairs`), and the lithium in the diluate at the start (**[metal in a tank](#building-blocks)** → **[moles](#building-blocks)**) |
-| Permselectivity, $`P`$ | output | the lithium and magnesium that crossed into the concentrate (**[metal that crossed](#building-blocks)** → **[moles](#building-blocks)**), and the diluate's concentrations at its first and last samples |
 | Lithium recovery | output | the lithium that crossed into the concentrate (**[metal that crossed](#building-blocks)**), and the lithium in the diluate at the start (**[metal in a tank](#building-blocks)**) |
-| Highest stack voltage, $`U_{\max}`$ | output | stack voltage (`stack_readings.csv` → `meter_voltage_v`); no building block needed |
 
-The building blocks in **bold** link to the table that defines them, in the next section. Each of the six numbers then has its
-own section below, under *Inputs* and *Outputs*.
+The building blocks in **bold** link to the table that defines them, in the next section. Each of
+the four numbers then has its own section below, under *Inputs* and *Output*.
 
 #### Which current
 
@@ -149,9 +200,9 @@ is calculated from the multimeter column F, and the supply column D is never use
 | Quantity | Equation | Meaning | Where the values are (CSV files and models) | Used by |
 |---|---|---|---|---|
 | Volume in a tank | $`\displaystyle V = \frac{w - w_0}{1000}`$ (L) | balance reading less the empty tank, taking 1 g = 1 mL | $`w`$: CSV `tank_readings.csv` → `weight_g`; Model `TankReading.weight_g`<br> $`w_0`$: CSV `runs.csv` → `tare_conc_g`, `tare_dil_g` or `tare_rinse_g`, matching the reading's `tank`; Model `Run.tare_conc_g`, `Run.tare_dil_g`, `Run.tare_rinse_g`<br>Workbook: columns AJ (concentrate) and AR (diluate) | [Metal in a tank](#building-blocks) (*V*) |
-| Metal in a tank | $`\displaystyle m = c\,V`$ (mg) | lab concentration (mg/L) times volume; concentration alone means little because the tanks gain and lose water all run | $`c`$: CSV `samples.csv` → `li_mg_l` or `mg_mg_l`, joined to its tank reading on `run_code`, `minute`, `tank`; Model `Sample.li_mg_l`, `Sample.mg_mg_l`, reached as `TankReading.sample`<br> $`V`$: the row above<br>Workbook: e.g. `AL24*AJ24` | [Metal that crossed](#building-blocks) (both ends)<br>[Charge per lithium offered](#charge-per-lithium-offered) (lithium offered)<br>[Lithium recovery](#lithium-recovery) (lithium at the start) |
-| Metal that crossed | $`\displaystyle \Delta m = m_{\text{end}} - m_{\text{start}}`$ | the change between the first and last sampled minute | the earliest and latest `minute` of that run and tank with both a sample and a weight: CSV `samples.csv` and `tank_readings.csv` → `minute`; Model `TankReading.minute`, over `Run.tank_readings`<br>Workbook: `AL24*AJ24 - AL8*AJ8` (lithium, concentrate) | [Moles](#building-blocks)<br>[Permselectivity](#permselectivity) (moles gained by the concentrate)<br>[Lithium recovery](#lithium-recovery) (lithium gained) |
-| Moles | $`\displaystyle n = \Delta m / M`$ | $`M`$ = 6.94 g/mol (Li), 24.305 g/mol (Mg) | none: the molar masses are constants<br>Workbook: columns BE (Li) and BF (Mg), in mol | [Permselectivity](#permselectivity) (*n*<sub>Li</sub>, *n*<sub>Mg</sub>)<br>[Charge per lithium offered](#charge-per-lithium-offered) (*n*<sub>Li,offered</sub>) |
+| Metal in a tank | $`\displaystyle m = c\,V`$ (mg) | lab concentration (mg/L) times volume; concentration alone means little because the tanks gain and lose water all run | $`c`$: CSV `samples.csv` → `li_mg_l`, joined to its tank reading on `run_code`, `minute`, `tank`; Model `Sample.li_mg_l`, reached as `TankReading.sample`<br> $`V`$: the row above<br>Workbook: e.g. `AL24*AJ24` | [Metal that crossed](#building-blocks) (both ends)<br>[Charge per lithium offered](#charge-per-lithium-offered) (lithium offered)<br>[Lithium recovery](#lithium-recovery) (lithium at the start) |
+| Metal that crossed | $`\displaystyle \Delta m = m_{\text{end}} - m_{\text{start}}`$ | the change between the first and last sampled minute | the earliest and latest `minute` of that run and tank with both a sample and a weight: CSV `samples.csv` and `tank_readings.csv` → `minute`; Model `TankReading.minute`, over `Run.tank_readings`<br>Workbook: `AL24*AJ24 - AL8*AJ8` (lithium, concentrate) | [Lithium recovery](#lithium-recovery) (lithium gained) |
+| Moles | $`\displaystyle n = m / M`$ | milligrams turned into millimoles, with $`M`$ = 6.94 g/mol for lithium | none: the molar mass is a constant | [Charge per lithium offered](#charge-per-lithium-offered) (*n*<sub>Li,offered</sub>) |
 | Charge passed | $`\displaystyle Q = \sum_k \frac{1}{2}\,(I_k + I_{k+1})\,(\tau_{k+1} - \tau_k)`$ | area under the current–time curve, in coulombs, with $`I_k`$ the current through the stack and $`\tau_k`$ the time of reading $`k`$ in seconds; no meter totals it, so it is summed from the power log, read mostly every 5 minutes. See [How the charge is added up](#how-the-charge-is-added-up) below. | $`I`$: CSV `stack_readings.csv` → `meter_current_ma`, ÷ 1000 to amps; Model `StackReading.meter_current_ma`<br> $`\tau`$: CSV `stack_readings.csv` → `minute` × 60; Model `StackReading.minute`, over `Run.stack_readings`<br>Workbook: column I, total in I54 | [Charge per lithium offered](#charge-per-lithium-offered) (*Q*) |
 
 ##### How the charge is added up
@@ -214,8 +265,8 @@ Variables:
 | 1000 | turns A into mA | fixed |
 
 How hard the current is pushed through each square centimetre of membrane: the driving force.
-More current moves ions faster but needs more voltage, and it can cost selectivity: lithium near
-the membrane can run short, and magnesium then carries more of the current.
+More current moves ions faster but needs more voltage, and more of it can go to magnesium: lithium
+near the membrane can run short, and magnesium then carries more of the current.
 
 Workbook: column H, `=G/I2`, with G the `AVERAGE` of the multimeter column F, hour by hour. For run
 AE that is 12.11 mA/cm² in the first hour.
@@ -325,47 +376,11 @@ describe it, and becomes an input once runs vary the charge.
 >
 > For AE's tank at AE's current, aiming for q = 1.5 gives about **6.4 hours**.
 
-#### Outputs: what is measured
-
-##### Permselectivity
-
-**Permselectivity, $`P`$ — maximised**
-
-$$\displaystyle P = \frac{n_{\text{Li}} / n_{\text{Mg}}}{\bar c_{\text{Li}} / \bar c_{\text{Mg}}}$$
-
-$$\displaystyle \bar c = \frac{c_{\text{start}} - c_{\text{end}}}{\ln\left(c_{\text{start}} / c_{\text{end}}\right)}$$
-
-Variables:
-
-| Symbol | What it is | Where it comes from |
-|---|---|---|
-| $`n_{\text{Li}}`$, $`n_{\text{Mg}}`$ | moles of each metal the concentrate gained over the run | calculation: [Metal that crossed](#building-blocks) for the `conc` tank, then [Moles](#building-blocks) |
-| $`\bar c_{\text{Li}}`$, $`\bar c_{\text{Mg}}`$ | each metal's average concentration in the diluate over the run, in mmol/L: the log-mean of its start and end values (when the two are equal, the start value) | calculation: the second equation above |
-| $`c_{\text{start}}`$, $`c_{\text{end}}`$ | the metal's concentration in the diluate's first and last samples, divided by its molar mass (6.94 for Li, 24.305 for Mg) | CSV: `samples.csv` → `li_mg_l`, `mg_mg_l`, tank `dil`<br>Model: `Sample.li_mg_l`, `Sample.mg_mg_l` (reached as `TankReading.sample`) |
-
-The top is the Li/Mg ratio that crossed; the bottom is the Li/Mg ratio the membrane was offered,
-averaged over the run because the diluate changes as ions leave it (in run AE its lithium falls from
-403 to 262 mg/L). So P says whether the membrane picked lithium out of what it was given:
-**P = 1 means no preference**, and above 1 lithium is favoured. Only concentrations are needed for
-the bottom, so the diluate's volume plays no part.
-
-Workbook: column BI, `(BE/BF) × (log-mean of AV)/24.305 ÷ (log-mean of AT)/6.94`; whole run in
-BI28. For run AE, **P = 5.79**.
-
-The workbook also reports the transport numbers, the share of the current each metal carried:
-$`t_{\text{Li}} = n_{\text{Li}} / (n_{\text{Li}} + 2n_{\text{Mg}})`$ (column BG; 0.68 for run AE)
-and $`t_{\text{Mg}} = 2n_{\text{Mg}} / (n_{\text{Li}} + 2n_{\text{Mg}})`$ (column BH). P does not
-use them.
-
-**Differs from the manuscript:** the manuscript (Eq 6) states the same comparison the other way up,
-as a relative transport number of the competing ion over lithium, so a *lower* value is better; it
-is the reciprocal of P. It averages the start and end concentrations arithmetically rather than
-logarithmically, and its wording names the concentrate-in and concentrate-out streams rather than
-the diluate. For run AE the arithmetic mean gives P = 5.71 against the workbook's 5.79.
+#### Output: what is measured
 
 ##### Lithium recovery
 
-**Lithium recovery — gate, at least 35 %**
+**Lithium recovery (%)**
 
 $$\displaystyle \text{recovery} = 100 \times \frac{\Delta m^{\text{conc}}_{\text{Li}}}{m^{\text{dil}}_{\text{Li,start}}}\ \%$$
 
@@ -377,8 +392,9 @@ Variables:
 | $`m^{\text{dil}}_{\text{Li,start}}`$ | milligrams of lithium in the diluate at its first sampled minute | calculation: [Metal in a tank](#building-blocks) for the `dil` tank at its first sampled minute |
 | 100 | turns the fraction into a percent | fixed |
 
-How much of the lithium on offer was actually harvested. A membrane can be highly selective while
-moving almost nothing; this gate rejects that setting.
+How much of the lithium on offer was actually harvested: the share of the diluate's lithium that
+ended up in the concentrate. It is what the model predicts, and the setup the model recommends is
+the one that makes it highest.
 
 Workbook: column AZ, `=(AL24*AJ24-AL8*AJ8)*100/(AT8*AR8)`; whole run in AZ28. For run AE,
 **38.27 %**.
@@ -388,82 +404,49 @@ $`(C_{\text{out}} - C_{\text{in}})/C_{\text{in}} \times 100`$ on the concentrate
 concentration: how much the concentrate was enriched, not what share of the feed's lithium was
 collected.
 
-##### Highest stack voltage
-
-**Highest stack voltage, $`U_{\max}`$ — gate, at most 20 V**
-
-$$\displaystyle U_{\max} = \max_k U_k$$
-
-Variables:
-
-| Symbol | What it is | Where it comes from |
-|---|---|---|
-| $`U_k`$ | voltage across the stack at reading $`k`$, in V | CSV: `stack_readings.csv` → `meter_voltage_v`<br>Model: `StackReading.meter_voltage_v` |
-| $`k`$ | each reading of the run's power log | CSV: the run's rows of `stack_readings.csv`<br>Model: `Run.stack_readings` |
-
-How much electrical push the stack needed. 20 V is the most the stack can hold; above it the
-membranes break. The limit therefore applies at every moment of the run, not just at the start.
-The voltage rises as the diluate is stripped of ions and its resistance climbs, so the highest
-reading of the run is the one that must stay at or below 20 V.
-
-As with the current, the multimeter reads the stack itself. The workbook's voltage-based columns
-(K, average voltage, and L, energy) use the multimeter column E, never the supply column C. The two
-readings differ by less than 0.1 V (run AE: 16.00 V supply, 15.93 V multimeter at the start).
-
-Neither the workbook nor the manuscript has a voltage limit: the 20 V ceiling comes from the lab,
-as the most the stack can hold.
-
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
 To show: the full results table, one row per run; one run worked by hand beside the program's
-answer; each number set beside the workbook's own value for the same run (for run AE: recovery
-38.27 %, P 5.79); and the mass-balance gap (lithium that left the diluate against lithium that
-arrived in the concentrate) as evidence the numbers are sound.
+answer; each run's recovery set beside the workbook's own value; and the mass-balance gap (lithium
+that left the diluate against lithium that arrived in the concentrate) as evidence the numbers are
+sound.
 
-Defining these quantities has already shown what the progress report must change:
+Defining these quantities has already shown one thing the progress report must change. **Feed
+ratio units:** the report's dataset table says "by mass". Ions compete for the current per ion,
+not per gram, so the ratio is molar. The two differ by 24.305 / 6.94 ≈ 3.5, so a mass ratio of 60
+is a molar ratio of about 17.
 
-1. **Voltage gate:** the report says *starting* voltage. 20 V is the most the stack can hold at
-   any moment, and the voltage climbs during a run, so the limit is checked against the highest
-   voltage of the run.
-2. **P's definition:** the report's Eq (1) divides $`t_{\text{Li}}/t_{\text{Mg}}`$ by the feed
-   ratio, which makes no preference 0.5, while its text says 1. The workbook's definition (mole
-   ratio crossed over log-mean ratio offered) is the one to use, and with it no preference is 1.
-3. **Feed ratio units:** the report's dataset table says "by mass". Ions compete for the current
-   per ion, not per gram, so the ratio is molar. The two differ by 24.305 / 6.94 ≈ 3.5, so a mass
-   ratio of 60 is a molar ratio of about 17.
+#### Run AE's recovery, worked by hand
 
-#### Example: run AE's P worked by hand
-
-Real numbers, from the lab's workbook, whole run (row 28):
+Real numbers, from the lab's workbook (run AE's sheet), whole run:
 
 | Quantity | Working | Value |
 |---|---|---|
-| Lithium the concentrate gained, $`n_{\text{Li}}`$ | workbook BE28 | 44.60 mmol |
-| Magnesium the concentrate gained, $`n_{\text{Mg}}`$ | workbook BF28 | 10.48 mmol |
-| Li/Mg ratio that crossed | 44.60 / 10.48 | **4.257** |
-| Lithium in the diluate, log-mean | (403.1 − 261.9) / ln(403.1 / 261.9) = 327.4 mg/L, ÷ 6.94 | 47.18 mmol/L |
-| Magnesium in the diluate, log-mean | (1657 − 1467) / ln(1657 / 1467) = 1560.1 mg/L, ÷ 24.305 | 64.19 mmol/L |
-| Li/Mg ratio offered | 47.18 / 64.19 | **0.7351** |
-| P | 4.257 / 0.7351 | **5.791** |
+| Lithium in the concentrate at the first sample | 63.56 mg/L (AL8) × 2.0235 L (AJ8) | 128.61 mg |
+| Lithium in the concentrate at the last sample | 218.5 mg/L (AL24) × 2.0053 L (AJ24) | 438.16 mg |
+| Lithium the concentrate gained, $`\Delta m^{\text{conc}}_{\text{Li}}`$ | 438.16 − 128.61 | **309.54 mg** |
+| Lithium in the diluate at the start, $`m^{\text{dil}}_{\text{Li,start}}`$ | 403.1 mg/L (AT8) × 2.0063 L (AR8) | **808.74 mg** |
+| Recovery | 100 × 309.54 / 808.74 | **38.27 %** |
 
-The workbook's own value, BI28, is 5.791: the hand calculation and the workbook agree.
+The workbook's own value, AZ28, is 38.27 %: the hand calculation and the workbook agree. Every
+other run's recovery is in the table of runs at the top of this plan.
 
 </details>
 
 ## Step 2: Look at the data before fitting
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
 Before choosing any equation, examine two things: the *design*, meaning which combinations of
-settings were actually run, and the *shape* each output takes as each input changes.
+settings were actually run, and the *shape* lithium recovery takes as each input changes.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 A model can only learn what the design lets it see. A combination of settings that was never run
@@ -474,7 +457,7 @@ being given terms the data cannot support.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 **The design.** For the membrane being modelled, a table (or plot) of current density against feed
@@ -482,7 +465,7 @@ ratio, one entry per run, beside each run's other conditions: starting concentra
 total charge. It shows the combinations that are missing, settings that moved together, conditions
 that differ between runs, and which runs are repeats.
 
-**The shapes.** Each output (P, lithium recovery, highest stack voltage) plotted against each input,
+**The shapes.** Lithium recovery plotted against each input,
 using runs where the other input is held fixed, so that only one thing changes along each plot.
 The ratio plots are drawn twice, against $`R`$ and against $`\ln R`$: whichever is closer to a
 straight line is the evidence for Step 4's choice. Runs whose other conditions differ are drawn
@@ -497,21 +480,21 @@ In each plot, look for:
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-The design of the GO-10 runs in the data files (AE–AY): AE, AF, AG, AH, AI, AJ, AN, AP, AT and AW.
-
-Current density across, Mg/Li feed ratio (by mass, as the runs are named) down, one run code per
-cell.
+The design of the GO-10 runs (listed at the top of this plan): current density across, Mg/Li feed
+ratio (by mass, as the runs are named) down, one run code per run.
 
 | Mg/Li (mass) ↓ \ current density (mA/cm²) → | 3 | 6 | 12 | 24 |
 |---|---|---|---|---|
-| 5 | AJ | AH, AI | AE | AN, AP |
+| 5 | AJ | AH, AI | AE, BD, BE | AN, AP |
 | 10 | | | AF | |
 | 20 | | | AG | |
 | 40 | | | AT | |
 | 60 | | | AW | |
+
+![The design of the GO-10 runs: a cross around the base run](figures/plan/step2-design.png)
 
 #### What the design shows
 
@@ -528,61 +511,51 @@ cell.
 3. **The ratio was changed through magnesium alone.** Every run's feed held 400 mg/L of lithium;
    only the magnesium changed (2000, 4000, 8000, 16 000 and 24 000 mg/L for ratios 5, 10, 20, 40
    and 60). So the feed ratio and the magnesium concentration are the same variable here, and the
-   data cannot tell an effect of the *ratio* from an effect of *more magnesium* (a saltier, more
-   conductive feed, which also lowers the voltage). What the model learns about $`R`$ holds for a
-   400 mg/L lithium feed; a brine with the same ratio but a different lithium concentration is
-   outside what was tested. It is also why charge per lithium offered barely varies: the lithium on
-   offer was the same in every run.
+   data cannot tell an effect of the *ratio* from an effect of *more magnesium*. What the model
+   learns about $`R`$ holds for a 400 mg/L lithium feed; a brine with the same ratio but a
+   different lithium concentration is outside what was tested. It is also why charge per lithium
+   offered barely varies: the lithium on offer was the same in every run.
 4. **The 24 mA/cm² runs started differently.** Their concentrate began as NaCl at 5 g/L (AN) or
    LiCl at 5 g/L (AP); every other run began with LiCl at 0.5 g/L. They are not directly
-   comparable with the rest, and are marked apart in every plot.
-5. **One pair of repeats:** AH and AI (GO-10, 6 mA/cm², ratio 5). Step 3 rests on it.
-6. **The high-ratio end is thin.** AW (ratio 60) has no lab results yet, and AT (ratio 40) has
-   only a few samples.
+   comparable with the rest, and are drawn apart in every figure.
+5. **Two groups of repeats,** both at ratio 5: AH and AI at 6 mA/cm², and AE, BD and BE at
+   12 mA/cm². BD and BE were run two months after AE. Step 3 rests on them.
+6. **The high-ratio end rests on one run per ratio:** AT (40) and AW (60).
 7. **Charge per lithium offered barely varies** (0.87 to 1.04), so it is not a model input for
    these runs; see [Charge per lithium offered](#charge-per-lithium-offered). The inputs are current
    density and feed ratio.
 
-#### The shape plots to make
+#### What the shapes show
 
-Because of the cross, each input is seen with the other held fixed:
+Because of the cross, each input is seen with the other held fixed: current density at ratio 5,
+the ratio at 12 mA/cm².
 
-- **P, lithium recovery and highest stack voltage against current density**, at ratio 5: runs
-  AJ, AH, AI, AE (AN, AP drawn apart).
-- **The same three against the feed ratio**, at 12 mA/cm²: runs AE, AF, AG, AT (and AW once its
-  results arrive), against both $`R`$ and $`\ln R`$.
+![Lithium recovery against current density, against the ratio and against ln R, for the GO-10 runs](figures/plan/step2-shapes.png)
 
-#### Example with made-up runs
-
-![The design of the made-up runs: a cross around the base run](figures/plan/step2-design.png)
-
-![P against current density, against R and against ln R, for the made-up runs](figures/plan/step2-shapes.png)
-
-Reading them:
-
-- **The design** is a cross: current density varies at ratio 5, the ratio at 12 mA/cm², with two
-  repeats at 6 mA/cm² and three at the base run. No run sits off the arms, so the interaction
-  cannot be estimated.
-- **P against current density** rises from 3 to 6 mA/cm², then falls: a curve with a peak, so the
-  equation needs a squared current-density term.
-- **P against R** falls steeply and then flattens; against $`\ln R`$ the same four points lie
-  nearly on a straight line. That is the evidence for using $`\ln R`$ (Step 4).
-- **The three runs at the base run** spread from 4.31 to 4.94: any trend has to be bigger than
-  that to mean something (Step 3).
+- **Against current density** (ratio 5): 22.9 % at 3 mA/cm², 36.6 and 37.7 % at 6, 28.1 to
+  38.3 % at 12, and 26.3 and 39.5 % at 24 (the two runs with a different concentrate). Beyond
+  6 mA/cm² there is no clear trend: the three runs at 12 mA/cm² differ from each other more than
+  the levels differ. Only the 3 mA/cm² run is clearly lower, and it is a single run.
+- **Against the ratio** (12 mA/cm²): from 31.8 % on average at ratio 5 to 18.2, 8.2, 3.7 and
+  2.5 % at ratios 10, 20, 40 and 60. Recovery roughly halves each time the ratio doubles.
+- **Against $`\ln R`$ the points are still curved.** A straight line in $`\ln R`$ will not follow
+  them, which already hints that the logarithm of recovery may be needed (Step 6).
+- **The spread at the base run** (28.1 to 38.3 %) is as large as any trend in current density;
+  Step 3 measures it.
 
 </details>
 
 ## Step 3: Measure the scatter between repeat runs
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
-One number for each output (P, lithium recovery and highest stack voltage) saying how much two runs
-made at identical settings disagree. This is the experiment's own noise, called the *pure error*.
+One number saying how much the lithium recovery of two runs made at identical settings disagrees.
+This is the experiment's own noise, called the *pure error*.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 Two runs with every setting the same never give identical results: each feed is made up
@@ -594,7 +567,7 @@ something real. The lack-of-fit test in Step 5 cannot be done without it.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### Which runs count as repeats
@@ -609,7 +582,7 @@ below never looks at them again.
 | Planned feed | the lithium and magnesium the feed was made up with set the ratio, an input of the model, so runs at different ratios are expected to differ | CSV: `runs.csv` → `li_feed_mg_l`, `mg_feed_mg_l`<br>Model: `Run.li_feed_mg_l`, `Run.mg_feed_mg_l` |
 | Current density | an input of the model, for the same reason; matched to the nearest design level (3, 6, 12 or 24 mA/cm²), see the note below | calculation: [Current density](#current-density) |
 | Starting concentrate | the salt the concentrate starts with sets the concentration difference across the membrane, and so how much diffuses back; runs started differently are not the same experiment | CSV: `runs.csv` → `conc_start_salt`, `conc_start_g_l`<br>Model: `Run.conc_start_salt`, `Run.conc_start_g_l` |
-| Run length | a longer run passes more charge and strips more of the diluate, so recovery and P move with it | CSV: `stack_readings.csv` → `minute`, the run's largest<br>Model: `StackReading.minute`, over `Run.stack_readings` |
+| Run length | a longer run passes more charge and strips more of the diluate, so recovery moves with it | CSV: `stack_readings.csv` → `minute`, the run's largest<br>Model: `StackReading.minute`, over `Run.stack_readings` |
 | Included | a run the lab does not stand behind would put its own problem into the noise estimate | CSV: `runs.csv` → `include`<br>Model: `Run.include` |
 
 For example, among the GO-10 runs:
@@ -628,7 +601,7 @@ intended rather than what was measured.
 
 #### Pooling the scatter
 
-For each output, the scatter within the groups is pooled over all of them:
+The scatter within the groups is pooled over all of them:
 
 $$\displaystyle s_{\text{pe}}^2 = \frac{\sum_g \sum_{j \in g} \left(y_j - \bar y_g\right)^2}{\nu_{\text{pe}}}, \qquad \nu_{\text{pe}} = \sum_g \left(n_g - 1\right)$$
 
@@ -636,14 +609,14 @@ Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`s_{\text{pe}}^2`$ | the pure-error variance: the experiment's own noise, squared, in the output's units squared | calculation: the first equation above |
-| $`s_{\text{pe}}`$ | the pure-error standard deviation: the typical difference between two runs at the same settings, in the output's own units; the number used in every later step | calculation: $`\sqrt{s_{\text{pe}}^2}`$ |
+| $`s_{\text{pe}}^2`$ | the pure-error variance: the experiment's own noise, squared, in points of recovery squared | calculation: the first equation above |
+| $`s_{\text{pe}}`$ | the pure-error standard deviation: the typical difference between two runs at the same settings, in points of recovery; the number used in every later step | calculation: $`\sqrt{s_{\text{pe}}^2}`$ |
 | $`\sum_g`$ | add up over every group of repeats | notation |
 | $`g`$ | a group of repeat runs | [Which runs count as repeats](#which-runs-count-as-repeats) |
 | $`\sum_{j \in g}`$ | add up over every run $`j`$ belonging to group $`g`$ | notation |
 | $`j`$ | one run, counted within its group | the runs of group $`g`$ |
-| $`y_j`$ | the output of run $`j`$: P, lithium recovery or highest stack voltage | calculation: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage) |
-| $`\bar y_g`$ | the output's average over the runs in group $`g`$ | calculation: the mean of $`y_j`$ for the runs in $`g`$ |
+| $`y_j`$ | the lithium recovery of run $`j`$ | calculation: [Lithium recovery](#lithium-recovery) |
+| $`\bar y_g`$ | the average recovery of the runs in group $`g`$ | calculation: the mean of $`y_j`$ for the runs in $`g`$ |
 | $`\left(y_j - \bar y_g\right)^2`$ | how far run $`j`$ sits from its own group's average, squared, so that misses above and below both count | calculation |
 | $`\nu_{\text{pe}}`$ | the degrees of freedom: how many independent comparisons the repeats give; each group gives one fewer than its number of runs, because its average was taken from those same runs | calculation: the second equation above |
 | $`n_g`$ | the number of runs in group $`g`$ | count |
@@ -658,7 +631,7 @@ Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`y_1`$, $`y_2`$ | the output of the two runs in the pair | calculation: as $`y_j`$ above |
+| $`y_1`$, $`y_2`$ | the recovery of the two runs in the pair | calculation: as $`y_j`$ above |
 | $`\lvert y_1 - y_2 \rvert`$ | the size of their difference, ignoring its sign | calculation |
 | $`\sqrt{2}`$ | both runs carry error, so their difference is $`\sqrt{2}`$ times noisier than either run alone | constant |
 
@@ -684,8 +657,7 @@ which says almost nothing; with four it narrows to about 0.6 to 2.9 times. Sever
 needed for the number to be useful, and the most valuable place for them is the base run, which
 sits on both arms of the design.
 
-Each output's scatter is also given relative to its typical size, so the three outputs can be
-compared with each other:
+The scatter is also given relative to the typical size of recovery:
 
 $$\displaystyle \text{relative scatter} = \frac{s_{\text{pe}}}{\bar y}$$
 
@@ -694,7 +666,7 @@ Variables:
 | Symbol | What it is | Where it comes from |
 |---|---|---|
 | $`s_{\text{pe}}`$ | the pure-error standard deviation | calculation: the first equations above |
-| $`\bar y`$ | the output's average over every run in the repeat groups | calculation: the mean of all $`y_j`$ used above |
+| $`\bar y`$ | the average recovery of every run in the repeat groups | calculation: the mean of all $`y_j`$ used above |
 
 #### Measuring the scatter, in simple terms
 
@@ -703,7 +675,7 @@ Variables:
 > says 70.4 kg, you cannot claim lunch made a difference: the change is smaller than the scale's
 > own wobble.
 >
-> Runs work the same way. Two runs at exactly the same settings never give exactly the same P:
+> Runs work the same way. Two runs at exactly the same settings never give exactly the same recovery:
 > each feed is made up separately, the membranes age, and every lab result has its own error. That
 > disagreement is the experiment's wobble, the pure error.
 >
@@ -714,10 +686,11 @@ Variables:
 > - **For the data (Step 2):** a difference between two runs only means something if it is bigger
 >   than the wobble.
 >
-> **Calculating it.** Take a pair of repeat runs whose P comes out 5.8 and 5.2:
+> **Calculating it.** Take AH and AI, two runs at 6 mA/cm² and ratio 5, which recovered 36.59 %
+> and 37.66 % of their lithium:
 >
-> - difference = 0.6
-> - wobble $`s_{\text{pe}}`$ = 0.6 / √2 = **0.42**
+> - difference = 1.07 points
+> - wobble $`s_{\text{pe}}`$ = 1.07 / √2 = **0.76 points**
 >
 > The √2 is there because both runs carry error, so their difference is noisier than either run
 > alone. With more repeats, each run's distance from its own group's average is measured, and all
@@ -736,58 +709,43 @@ Variables:
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-To show: for each output, $`s_{\text{pe}}`$, its relative size, its degrees of freedom and its
-95 % interval, and the groups of repeat runs it came from.
+To show: $`s_{\text{pe}}`$, its relative size, its degrees of freedom and its 95 % interval, and the
+groups of repeat runs it came from.
 
-#### Where the GO-10 repeats stand
+#### The GO-10 repeats
 
-- **In the data files:** one pair, AH and AI (6 mA/cm², ratio 5). One degree of freedom: the
-  "almost nothing" row above.
-- **In the lab's workbook, not yet in the data files:** BD and BE, run at exactly AE's settings
-  (GO-10, 12 mA/cm², 400 mg/L lithium, 2000 mg/L magnesium, 4 hours, the same starting
-  concentrate). With AE they make a group of three at the base run, adding two degrees of freedom:
-  three in all.
-- **Not repeats:** BA has the same feed and current as AE but ran 18 hours, so it passed a
-  different charge; BB, BC and BF used different feeds.
+![The GO-10 repeat runs and their group averages](figures/plan/step3-repeats.png)
 
-So the most useful step for Step 3 is bringing the workbook's newer runs into the data files.
-
-#### Example with made-up runs
-
-![The made-up repeat runs and their group averages](figures/plan/step3-repeats.png)
-
-Two groups of repeats, worked for P:
-
-| Group | Runs (P) | Group average | Squared distances from the average | Sum |
+| Group | Runs (recovery, %) | Group average | Squared distances from the average | Sum |
 |---|---|---|---|---|
-| 6 mA/cm², ratio 5 | M2 5.82, M3 6.09 | 5.955 | 0.0182, 0.0182 | 0.0365 |
-| 12 mA/cm², ratio 5 | M4 4.31, M5 4.94, M6 4.89 | 4.713 | 0.1627, 0.0514, 0.0312 | 0.2453 |
+| 6 mA/cm², ratio 5 | AH 36.59, AI 37.66 | 37.13 | 0.29, 0.29 | 0.57 |
+| 12 mA/cm², ratio 5 | AE 38.27, BD 29.06, BE 28.09 | 31.81 | 41.77, 7.54, 13.81 | 63.13 |
 
-- Sum over both groups: 0.0365 + 0.2453 = **0.2817**
+- Sum over both groups: 0.57 + 63.13 = **63.70**
 - Degrees of freedom: (2 − 1) + (3 − 1) = **3**
-- $`s_{\text{pe}}^2`$ = 0.2817 / 3 = 0.0939, so $`s_{\text{pe}}`$ = **0.306**
-- 95 % interval for the true value: 0.306 × 0.57 to 0.306 × 3.7, that is **0.17 to 1.14**
-- Relative to the average P of these five runs (5.21): 0.306 / 5.21 = **5.9 %**
+- $`s_{\text{pe}}^2`$ = 63.70 / 3 = 21.23, so $`s_{\text{pe}}`$ = **4.61 points** of recovery
+- 95 % interval for the true value: **2.6 to 17.2 points**
+- Relative to the average recovery of these five runs (33.9 %): 4.61 / 33.9 = **13.6 %**
 
-For all three outputs:
+Reading it:
 
-| Output | $`s_{\text{pe}}`$ | Relative | Degrees of freedom | 95 % interval |
-|---|---|---|---|---|
-| P | 0.306 | 5.9 % | 3 | 0.17 to 1.14 |
-| Lithium recovery | 1.03 points | 2.4 % | 3 | 0.58 to 3.84 |
-| Highest stack voltage | 0.131 V | 1.2 % | 3 | 0.074 to 0.489 |
-
-The noise actually put into the made-up runs (0.25, 1.5 and 0.3) lies inside every interval, but
-each interval is wide: with three degrees of freedom, the upper end is still more than six times the lower.
+- **Almost all of the scatter is at the base run.** AH and AI agree within 1.1 points. AE
+  recovered 9 to 10 points more than BD and BE, which were run at the same settings two months
+  later. Whether that is a drift (an ageing membrane, a different piece of membrane, a different
+  batch of feed) or ordinary scatter is a question for the lab, and it matters: if it is a drift,
+  part of this "noise" is a real change, and the pure error overstates the experiment's own
+  scatter.
+- **Three degrees of freedom**, so the true scatter could lie anywhere from 2.6 to 17 points.
+- **Not repeats:** AN and AP share a setting but not a starting concentrate; BA ran 18 hours.
 
 </details>
 
 ## Step 4: Prepare the inputs
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
 Put the two inputs into the form the fit uses: the feed ratio as its logarithm, and both inputs
@@ -795,7 +753,7 @@ rescaled (*coded*) to run from −1 at the lowest tested value to +1 at the high
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 **The logarithm of the ratio.** The ratio is varied in doubling steps, and what matters to
@@ -807,7 +765,7 @@ term in $`\ln R`$ can still turn, so if one is kept (Step 5), its turning point 
 the tested range.
 
 **The logarithm of current density, perhaps.** Current density was also varied in doubling steps.
-Whether $`i`$ or $`\ln i`$ describes the outputs better is not assumed: both are tried in Step 5,
+Whether $`i`$ or $`\ln i`$ describes recovery better is not assumed: both are tried in Step 5,
 and the leave-one-out error decides.
 
 **Coding.** Over the tested range, an input and its square rise almost together, so least squares
@@ -819,7 +777,7 @@ output at the centre of the design.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 4 starts from
@@ -828,7 +786,7 @@ output at the centre of the design.
 |---|---|---|
 | $`i`$ | current density, in mA/cm² | calculation: [Current density](#current-density) |
 | $`R`$ | Mg/Li feed ratio, molar | calculation: [Feed ratio](#feed-ratio) |
-| the runs being fitted | the GO-10 runs that are included and whose three outputs could all be worked out | CSV: `runs.csv` → `cem`, `include`<br>Model: `Run.cem`, `Run.include`<br>outputs: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage) |
+| the runs being fitted | the GO-10 runs that are included and whose recovery could be worked out | CSV: `runs.csv` → `cem`, `include`<br>Model: `Run.cem`, `Run.include`<br>recovery: [Lithium recovery](#lithium-recovery) |
 
 Step 4 reads nothing new from the files: it reshapes Step 1's two inputs.
 
@@ -920,80 +878,48 @@ Variables:
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
 To show: the coding formula for each input with its $`v_{\text{mid}}`$ and $`v_{\text{half}}`$, and
-a VIF table for each chosen model.
+a VIF table for the chosen model.
 
-#### Where the GO-10 inputs stand
-
-The two inputs of the GO-10 runs with lab results, from the data files:
-
-| Run | $`i`$ (mA/cm²) | $`\ln i`$ | $`R`$ (molar) | $`\ln R`$ |
-|---|---|---|---|---|
-| AJ | 3.06 | 1.119 | 1.428 | 0.356 |
-| AH | 6.10 | 1.808 | 1.428 | 0.356 |
-| AI | 6.11 | 1.809 | 1.428 | 0.356 |
-| AE | 12.12 | 2.495 | 1.428 | 0.356 |
-| AF | 12.11 | 2.494 | 2.855 | 1.049 |
-| AG | 12.10 | 2.494 | 5.711 | 1.742 |
-| AT | 12.04 | 2.488 | 11.42 | 2.435 |
-| AN | 24.11 | 3.182 | 1.428 | 0.356 |
-| AP | 24.06 | 3.180 | 1.428 | 0.356 |
-
-Their coding depends on one open decision: whether AN and AP, whose concentrate started
-differently (Step 2), are among the runs being fitted.
-
-| Input | Fitted runs | $`v_{\min}`$ | $`v_{\max}`$ | $`v_{\text{mid}}`$ | $`v_{\text{half}}`$ |
-|---|---|---|---|---|---|
-| $`\ln i`$ | with AN, AP | 1.119 (AJ) | 3.182 (AN) | 2.151 | 1.032 |
-| $`\ln i`$ | without AN, AP | 1.119 (AJ) | 2.495 (AE) | 1.807 | 0.688 |
-| $`i`$ | with AN, AP | 3.06 | 24.11 | 13.58 | 10.52 |
-| $`i`$ | without AN, AP | 3.06 | 12.12 | 7.59 | 4.53 |
-| $`\ln R`$ | either | 0.356 (ratio 5) | 2.435 (AT, ratio 40) | 1.396 | 1.040 |
-
-- **With AN and AP**, current density is coded over 3–24 mA/cm². **Without them**, over 3–12, and
-  any prediction above 12.1 mA/cm² is outside the fitted range.
-- **The ratio ends at AT (ratio 40)** because AW (ratio 60) has no lab results yet. When they
-  arrive, $`v_{\max}`$ becomes $`\ln 17.13 = 2.841`$ and every coded ratio shifts.
-- **Coded values are not exactly the design levels**, because current density is measured: AT
-  codes to 0.98 rather than 1.00 when AN and AP are left out.
-- **The VIFs** wait for Step 5 to choose the models.
-
-#### Example with made-up runs
-
-Coding the three inputs:
+#### The GO-10 inputs, coded
 
 | Input | $`v_{\min}`$ | $`v_{\max}`$ | $`v_{\text{mid}}`$ | $`v_{\text{half}}`$ | Coded levels |
 |---|---|---|---|---|---|
-| $`i`$ | 3 | 24 | 13.5 | 10.5 | 3 → −1, 6 → −0.71, 12 → −0.14, 24 → +1 |
-| $`\ln i`$ | ln 3 = 1.099 | ln 24 = 3.178 | 2.138 | 1.040 | −1, −0.33, +0.33, +1 |
-| $`\ln R`$ | ln 5 = 1.609 | ln 40 = 3.689 | 2.649 | 1.040 | −1, −0.33, +0.33, +1 |
+| $`\ln i`$ | 1.118 (AJ, 3.06 mA/cm²) | 3.183 (AN, 24.11 mA/cm²) | 2.151 | 1.032 | 3 → −1, 6 → −0.33, 12 → +0.33, 24 → +1 |
+| $`i`$ | 3.06 | 24.11 | 13.59 | 10.53 | 3 → −1, 6 → −0.71, 12 → −0.14, 24 → +1 |
+| $`\ln R`$ | 0.356 (ratio 5) | 2.841 (AW, ratio 60) | 1.599 | 1.242 | 5 → −1, 10 → −0.44, 20 → +0.12, 40 → +0.67, 60 → +1 |
 
-On the log scale, doubling steps become equal steps; on the plain scale, three of the four current
-densities crowd into the lower half.
+On the log scale, the doubling steps of current density become equal steps; on the plain scale,
+three of the four levels crowd into the lower half.
 
-![An input and its square, before and after coding](figures/plan/step4-coding.png)
+![Current density and its square, before and after coding, for the GO-10 runs](figures/plan/step4-coding.png)
 
-Before coding, $`i`$ and $`i^2`$ have a correlation of 0.96: least squares could hardly tell them
-apart. After coding, $`x`$ and $`x^2`$ have a correlation of −0.01. In the model chosen for P
-(Step 5), the variance inflation factors are 1.06 for $`x_1`$, 1.14 for $`x_2`$ and 1.10 for
-$`x_1^2`$, all close to 1: the coefficients can be trusted.
+- **Coding removes most of the overlap** between current density and its square: their correlation
+  falls from 0.97 to 0.26. It does not reach 0, because seven of the twelve runs sit at
+  12 mA/cm², away from the middle of the range.
+- **Ratio and current density hardly overlap:** their coded values have a correlation of 0.13, so
+  a model with both has a VIF of 1.02 for each.
+- **The chosen model** (Step 5) has a single input, the ratio, so there is nothing for it to
+  overlap with.
+- **AN and AP set the top of the current-density range**; without them it would end at
+  12.12 mA/cm². **AW sets the top of the ratio range.**
 
 </details>
 
 ## Step 5: Fit a ladder of candidate models and compare them
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
-For each output separately, fit a short list of equations fixed in advance, each adding one term to
-the one before, and choose one equation per output by rules also fixed in advance.
+Fit a short list of equations for lithium recovery, fixed in advance, each adding one term to the
+one before, and choose one of them by rules also fixed in advance.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 Many different polynomials can pass close to a handful of points, so a curve that fits is not, by
@@ -1006,7 +932,7 @@ significant.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 5 starts from
@@ -1015,7 +941,7 @@ significant.
 |---|---|---|
 | $`x_1`$ | coded current density, from $`i`$ or from $`\ln i`$ | calculation: [Coding](#coding), Step 4 |
 | $`x_2`$ | coded $`\ln R`$ | calculation: [Coding](#coding), Step 4 |
-| $`y_k`$ | the measured output of run $`k`$: P, lithium recovery or highest stack voltage, one output at a time | calculation: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage) |
+| $`y_k`$ | the measured lithium recovery of run $`k`$, or its logarithm (see [When the log of recovery is needed](#when-the-log-of-recovery-is-needed), Step 6) | calculation: [Lithium recovery](#lithium-recovery) |
 | $`k`$ | one of the runs being fitted, numbered 1 to $`n`$ | the runs being fitted: [What Step 4 starts from](#what-step-4-starts-from) |
 | $`s_{\text{pe}}`$, $`\nu_{\text{pe}}`$ | the pure error and its degrees of freedom | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
 
@@ -1026,10 +952,10 @@ Step 5 reads nothing new from the files.
 | Model | Equation | Coefficients, $`p`$ |
 |---|---|---|
 | M0 | $`\hat y = b_0`$ | 1 |
-| M1 | $`\hat y = b_0 + b_1 x_1`$ | 2 |
-| M2 | $`\hat y = b_0 + b_1 x_1 + b_2 x_2`$ | 3 |
-| M3 | $`\hat y = b_0 + b_1 x_1 + b_2 x_2 + b_3 x_1^2`$ | 4 |
-| M4 | $`\hat y = b_0 + b_1 x_1 + b_2 x_2 + b_3 x_1^2 + b_4 x_2^2`$ | 5 |
+| M1 | $`\hat y = b_0 + b_2 x_2`$ | 2 |
+| M2 | $`\hat y = b_0 + b_2 x_2 + b_1 x_1`$ | 3 |
+| M3 | $`\hat y = b_0 + b_2 x_2 + b_1 x_1 + b_3 x_1^2`$ | 4 |
+| M4 | $`\hat y = b_0 + b_2 x_2 + b_1 x_1 + b_3 x_1^2 + b_4 x_2^2`$ | 5 |
 
 Variables:
 
@@ -1045,6 +971,17 @@ Variables:
 There is no $`x_1 x_2`$ term: the design cannot estimate it (Step 2). The ladder is run twice,
 once with $`x_1`$ from $`i`$ and once from $`\ln i`$ (Step 4).
 
+**Why the ratio comes first.** Ions compete for the current, so more magnesium per lithium must
+lower the share of the current that lithium carries: the ratio's effect is certain from the
+chemistry, while current density's is not. The ladder therefore adds the ratio first, then current
+density, then the bends.
+
+**Changed after the real runs.** The first version of this plan added current density first. On
+the real runs, current density had no detectable effect, so every model containing it failed the
+rule that each term be significant, while the ratio alone, the model the runs support, was not on
+the list. The order was changed for that reason. It is reported here so that the reader can judge
+the change.
+
 #### Fitting by least squares
 
 $$\displaystyle b = \left(X^\top X\right)^{-1} X^\top y$$
@@ -1057,7 +994,7 @@ Variables:
 | $`X`$ | the design matrix: one row per run $`k`$, one column per term of the model (a column of 1s for $`b_0`$, then $`x_1`$, $`x_2`$, …) | calculation: from $`x_1`$, $`x_2`$ of each run |
 | $`X^\top`$ | $`X`$ turned on its side (rows become columns) | notation |
 | $`\left(X^\top X\right)^{-1}`$ | the inverse of $`X^\top X`$, the matrix that undoes it | calculation |
-| $`y`$ | the measured outputs $`y_k`$, as one column | [What Step 5 starts from](#what-step-5-starts-from) |
+| $`y`$ | the measured values $`y_k`$, as one column | [What Step 5 starts from](#what-step-5-starts-from) |
 
 This is the set of coefficients that makes the sum of squared misses as small as it can be.
 
@@ -1159,8 +1096,6 @@ Variables:
 | $`b_{\text{linear}}`$, $`b_{\text{squared}}`$ | the input's two coefficients: $`b_1`$ and $`b_3`$ for current density, $`b_2`$ and $`b_4`$ for ratio | fitted |
 | $`[-1, 1]`$ | the tested range, in coded units | Step 4 |
 
-Start with P; the same procedure then covers recovery and voltage.
-
 | Statistic | What it tells the reader |
 |---|---|
 | R² | share of the variation explained; always rises as terms are added, so never used alone |
@@ -1206,86 +1141,94 @@ p-value) are all included.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-To show: for each output, one table with a row per candidate and a column per statistic above; and
-the chosen equation with each coefficient, its standard error and p-value, written both in coded
-and in real units.
+To show: one table with a row per candidate and a column per statistic above; and the chosen
+equation with each coefficient, its standard error and p-value, written both in coded and in real
+units.
 
-#### Where the GO-10 runs stand
+The ladder is fitted twice on the GO-10 runs: first to recovery as measured, then, because Step 6
+sends it back, to the logarithm of recovery. Both passes use $`x_1`$ from $`\ln i`$; with
+$`x_1`$ from $`i`$ the choice is the same, because the chosen model has no current-density term.
+The leave-one-out errors are in points of recovery in both passes, so the two can be compared.
 
-What the GO-10 runs with lab results allow, before anything is fitted:
+![Leave-one-out error up the ladder, for recovery as measured and for its logarithm, against the pure error](figures/plan/step5-ladder.png)
 
-| | With AN, AP | Without AN, AP |
-|---|---|---|
-| Runs being fitted, $`n`$ | 9 | 7 |
-| Distinct settings, $`n_{\text{set}}`$ | 7 | 6 |
-| Most coefficients allowed, $`n - 2`$ | 7: the whole ladder | 5: the whole ladder, but M4 is left with 2 degrees of freedom |
-| Current-density levels behind $`x_1^2`$ | 4 (3, 6, 12, 24) | 3 (3, 6, 12) |
-| Ratio levels behind $`x_2^2`$ | 4 (5, 10, 20, 40) | 4 (5, 10, 20, 40) |
-| t value a coefficient of M3 must beat, $`t_{0.975,\,n-4}`$ | 2.57 | 3.18 |
+#### First pass: recovery as measured
 
-- **The lack-of-fit test is nearly powerless for now.** The only GO-10 repeats in the data files are
-  AH and AI, so $`\nu_{\text{pe}} = 1`$, and the test compares against $`F_{n_{\text{set}} - p,\,1}`$,
-  whose 95th percentile is 160 to 230: a model would have to miss by more than a hundred times the
-  noise to fail it. With BD and BE from the workbook, $`\nu_{\text{pe}} = 3`$ and the threshold falls
-  to about 9 or 10, and the test starts to mean something.
-- **AN and AP sit at the same setting but are not repeats** (their concentrate started
-  differently). If both are fitted, their difference counts as lack of fit, though part of it is
-  the concentrate's effect rather than the model's.
-- **Without AN and AP**, the curvature in current density rests on three levels, and the lowest,
-  3 mA/cm², is a single run, AJ. A model with $`x_1^2`$ then passes exactly through AJ, and its
-  leave-one-out miss cannot be worked out (Step 6, [Where the GO-10 runs stand on leverage](#where-the-go-10-runs-stand-on-leverage)),
-  so M3 and M4 cannot be judged by leave-one-out error on those seven runs.
-
-#### Example with made-up runs
-
-The ladder for P, with $`x_1`$ from $`\ln i`$ (10 runs, 7 distinct settings, pure error 0.306
-with 3 degrees of freedom):
+12 runs, 9 distinct settings, pure error 4.61 points with 3 degrees of freedom.
 
 | Model | $`p`$ | R² | Adjusted R² | F (p-value) | Partial F (p-value) | LOO RMSE | LOO MAE | Lack-of-fit F (p-value) | Every term significant? |
 |---|---|---|---|---|---|---|---|---|---|
-| M0 | 1 | 0 | 0 | | | 1.49 | 1.29 | 31.2 (0.009) | |
-| M1 | 2 | 0.609 | 0.560 | 12.5 (0.008) | 12.5 (0.008) | 1.17 | 1.03 | 14.3 (0.027) | yes |
-| M2 | 3 | 0.798 | 0.740 | 13.8 (0.004) | 6.55 (0.038) | 1.12 | 0.76 | 8.86 (0.052) | yes |
-| **M3** | 4 | 0.980 | 0.969 | 95.9 (< 0.001) | 53.3 (< 0.001) | **0.31** | 0.29 | 0.30 (0.83) | yes |
-| M4 | 5 | 0.984 | 0.971 | 77.3 (< 0.001) | 1.42 (0.29) | 0.23 | 0.17 | 0.01 (0.99) | no: the $`x_2^2`$ term has p = 0.29 |
-
-![Leave-one-out error of P up the ladder, against the pure error](figures/plan/step5-ladder.png)
+| M0 | 1 | 0 | 0 | | | 14.07 | 11.96 | 11.37 (0.035) | |
+| **M1** | 2 | 0.825 | 0.807 | 47.0 (< 0.001) | 47.0 (< 0.001) | **6.40** | 5.87 | 1.93 (0.32) | yes |
+| M2 | 3 | 0.830 | 0.792 | 22.0 (< 0.001) | 0.30 (0.60) | 7.76 | 6.95 | 2.16 (0.28) | no: current density, p = 0.60 |
+| M3 | 4 | 0.843 | 0.785 | 14.4 (0.001) | 0.68 (0.43) | 11.70 | 9.10 | 2.34 (0.26) | no: current density and its square |
+| M4 | 5 | 0.887 | 0.822 | 13.7 (0.002) | 2.66 (0.15) | 10.09 | 7.17 | 1.91 (0.31) | no: three terms |
 
 The rules, in order:
 
-1. **M0 and M1 fail the lack-of-fit test** (p below 0.05): they miss by more than the noise.
-2. **M4 has the lowest leave-one-out error, but its added term is not significant** (p = 0.29),
-   so it is out: the improvement is the term fitting noise.
-3. **M3 is the lowest among the rest**, and no simpler model is within the pure error of it
-   (M2 misses by 0.81 more). M3 is chosen. Its leave-one-out error, 0.31, equals the pure error:
-   it predicts unseen runs as well as the experiment repeats itself.
-4. **The other scale loses:** with $`x_1`$ from $`i`$ instead of $`\ln i`$, the best leave-one-out
-   error is 0.53.
-5. **The squared term turns inside the tested range:**
-   $`x_1^\ast = -(-1.819) / (2 \times -1.680) = -0.54`$, which is $`i = e^{2.138 - 0.54 \times 1.040}`$
-   = 4.8 mA/cm². By the rule, a turning point inside the range needs a physical reason; here it
-   is the best current density the design was looking for, and the made-up truth does peak at
-   5 mA/cm². With real runs, that reason has to be argued from the chemistry.
+1. **M0 fails the lack-of-fit test** (p = 0.035): predicting the average misses by more than the
+   noise.
+2. **M2, M3 and M4 each carry a term that is not significant**, and their leave-one-out errors
+   rise (7.8 to 11.7 points): the added terms fit noise. Current density adds nothing: its
+   p-value is 0.60.
+3. **M1, the ratio alone, is chosen.** Its leave-one-out error, 6.4 points, is above the pure
+   error (4.6) but no other candidate comes close.
+4. **Without AN and AP** the choice is the same; current density's p-value is then 0.67.
 
-The chosen equations, in coded units:
+Step 6 then finds that this model predicts a negative recovery at ratio 60, and sends the ladder
+back, fitted to the logarithm of recovery.
 
-| Output | Equation | Scale of $`x_1`$ |
+#### Second pass: the logarithm of recovery
+
+The same runs; R², F and the lack-of-fit test are on the log scale, where the pure error is 0.139
+(about 14 %).
+
+| Model | $`p`$ | R² | Adjusted R² | F (p-value) | Partial F (p-value) | LOO RMSE | LOO MAE | Lack-of-fit F (p-value) | Every term significant? |
+|---|---|---|---|---|---|---|---|---|---|
+| M0 | 1 | 0 | 0 | | | 15.55 | 13.96 | 63.3 (0.003) | |
+| **M1** | 2 | 0.967 | 0.964 | 296.5 (< 0.001) | 296.5 (< 0.001) | **5.61** | 4.59 | 1.95 (0.31) | yes |
+| M2 | 3 | 0.970 | 0.963 | 143.4 (< 0.001) | 0.65 (0.44) | 7.45 | 5.79 | 2.09 (0.29) | no: current density, p = 0.44 |
+| M3 | 4 | 0.977 | 0.968 | 112.8 (< 0.001) | 2.54 (0.15) | 9.82 | 6.94 | 1.75 (0.34) | no |
+| M4 | 5 | 0.977 | 0.964 | 74.9 (< 0.001) | 0.09 (0.78) | 10.61 | 7.32 | 2.16 (0.28) | no |
+
+M1 is chosen again: the ratio alone. It explains 97 % of the variation in the logarithm of
+recovery, and predicts unseen runs to within 5.6 points, closer than the first pass.
+
+#### The chosen equation
+
+$$\displaystyle \ln \widehat{\text{recovery}} = 2.207 - 1.263\, x_2, \qquad x_2 = \frac{\ln R - 1.599}{1.242}$$
+
+Standard errors 0.066 and 0.073; both p-values below $`10^{-8}`$. In real units:
+
+$$\displaystyle \widehat{\text{recovery}} = 46.1 \times R^{-1.02}\ \%$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
 |---|---|---|
-| P | $`\hat P = 4.362 - 1.819\,x_1 - 1.123\,x_2 - 1.680\,x_1^2`$ (standard errors 0.120, 0.154, 0.122, 0.230; every p ≤ 0.0003) | $`\ln i`$ |
-| Lithium recovery | $`34.32 + 19.51\,x_1 - 8.03\,x_2`$ | $`\ln i`$ |
-| Highest stack voltage | $`12.34 + 6.25\,x_1 - 0.93\,x_2`$ | $`i`$ |
+| $`\widehat{\text{recovery}}`$ | the predicted whole-run lithium recovery, in % | calculation: the equations above |
+| $`x_2`$ | the coded ratio | [Coding](#coding), Step 4; 1.599 and 1.242 are the GO-10 runs' $`v_{\text{mid}}`$ and $`v_{\text{half}}`$ |
+| $`R`$ | the molar Mg/Li feed ratio | [Feed ratio](#feed-ratio), Step 1 |
+| 46.1 | the predicted recovery at a molar ratio of 1, $`e^{2.207 + 1.263 \times 1.599 / 1.242}`$ | calculation |
+| −1.02 | how steeply recovery falls with the ratio, $`-1.263 / 1.242`$ | calculation |
 
-with $`x_1`$ and $`x_2`$ coded as in Step 4. In real units, for P:
-$`x_1 = (\ln i - 2.138) / 1.040`$ and $`x_2 = (\ln R - 2.649) / 1.040`$.
+By mass ratio, the same equation reads about $`165 \times R_{\text{mass}}^{-1.02}`$: 32 % at
+ratio 5, 16 % at 10, 2.6 % at 60.
+
+**What it says.** Recovery is close to inversely proportional to the Mg/Li ratio: double the
+magnesium per lithium, and half as much lithium is recovered. That is what ions sharing a fixed
+charge would give: every run passed the same charge per area, so the more magnesium there is per
+lithium, the smaller lithium's share of that charge. Current density does not appear: within 3 to
+24 mA/cm², at the same charge, the runs show no effect of it larger than their own scatter.
 
 </details>
 
 ## Step 6: Check the chosen model
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
 Check that the chosen equation's errors behave as least squares assumes, and that no single run
@@ -1293,7 +1236,7 @@ decides the result; and produce the figure that shows how well the surrogate per
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 The statistics of Step 5 (F, t, p-values) and the intervals of Step 8 assume errors that are
@@ -1305,7 +1248,7 @@ whether the surrogate is good enough.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 6 starts from
@@ -1368,25 +1311,29 @@ Each should scatter evenly around zero:
 |---|---|---|
 | a curve against $`\hat y_k`$ or an input | a term is missing | the next rung of the ladder is reconsidered (Step 5) |
 | a funnel: the spread grows with $`\hat y_k`$ | the noise grows with the output's size | the output is modelled on a log scale (below) |
+| a predicted recovery below 0 % | a straight line has run past what recovery can be | the output is modelled on a log scale (below) |
 | a trend against the run date | the runs drift with time, for example as membranes age | reported to the lab; the date cannot be added as an input with so few runs |
 
-#### If the residuals show a funnel
+#### When the log of recovery is needed
 
-P is a ratio: always positive, and its scatter tends to grow with its size. If the residual plot
-shows a funnel, the ladder of Step 5 is refitted with $`\ln P`$ as the output, and each prediction
-is turned back into P:
+Recovery cannot be negative, and as magnesium rises it falls by a factor rather than by a fixed
+amount. If the residuals curve against an input or open into a funnel, or the model predicts a
+recovery below 0 %, the ladder of Step 5 is refitted with the logarithm of recovery as the output,
+and each prediction is turned back into a recovery:
 
-$$\displaystyle \hat P = e^{\widehat{\ln P}}$$
+$$\displaystyle \widehat{\text{recovery}} = e^{\widehat{\ln \text{recovery}}}$$
 
 Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\widehat{\ln P}`$ | the logarithm of P as the refitted model predicts it | calculation: the Step 5 ladder, fitted to $`\ln P`$ |
-| $`\hat P`$ | that prediction turned back into P | calculation: the equation above |
+| $`\widehat{\ln \text{recovery}}`$ | the logarithm of recovery as the refitted model predicts it | calculation: the Step 5 ladder, fitted to the logarithm of recovery |
+| $`\widehat{\text{recovery}}`$ | that prediction turned back into a recovery, in % | calculation: the equation above |
+| $`e^{v}`$ | the exponential, which undoes the natural logarithm | notation |
 
-The two versions are then compared by their leave-one-out error worked out in P, so that both are
-judged in the same units, and the lower one is kept.
+A model of the logarithm can never predict a negative recovery, and it lets each step in ratio cut
+recovery by the same factor. The two versions are compared by their leave-one-out error worked out
+in points of recovery, so both are judged in the same units.
 
 #### Normal Q–Q plot
 
@@ -1422,7 +1369,7 @@ Variables:
 | $`\left[\cdot\right]_{kk}`$ | the entry in row $`k`$, column $`k`$ of the matrix | notation |
 | $`p/n`$ | the average leverage: the leverages always add up to $`p`$ | calculation |
 
-Leverage depends only on the settings, not on the outputs, so it can be worked out before any run
+Leverage depends only on the settings, not on the recoveries, so it can be worked out before any run
 is measured. Runs above $`2p/n`$ are flagged. When $`2p/n`$ is 1 or more, that rule can flag
 nothing, and runs above 0.5 are flagged instead: more than half of their fitted value is their own
 measurement. A run with $`h_{kk} = 1`$ is fitted exactly whatever it measured, so it cannot be
@@ -1463,7 +1410,7 @@ Variables:
 | $`b_{j(-k)}`$ | coefficient $`j`$ refitted without run $`k`$ | calculation: [Fitting by least squares](#fitting-by-least-squares), without run $`k`$ |
 
 A shift of more than one standard error means that run, more than the others, decides that
-coefficient. The change in the recommended setting (Step 8) is reported too. No run is dropped
+coefficient. The change in the recommended setup (Step 8) is reported too. No run is dropped
 without a reason from the lab: an unusual result is a question for the lab, not a reason to delete
 a run.
 
@@ -1494,89 +1441,62 @@ a run.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-To show: for each output, the parity plot, the residual plots and the Q–Q plot with its
-Shapiro–Wilk p-value; and a table of each run's leverage, standardised residual and Cook's
-distance, with the flagged runs and the coefficient shifts when each is left out.
+To show: the parity plot, the residual plots and the Q–Q plot with its Shapiro–Wilk p-value; and
+a table of each run's leverage, standardised residual and Cook's distance, with the flagged runs
+and the coefficient shifts when each is left out.
 
-#### Where the GO-10 runs stand on leverage
+#### First pass: why the log of recovery is needed
 
-Leverage depends only on the settings, so it can be worked out for the GO-10 runs before any
-model is fitted. With $`x_1`$ from $`\ln i`$, coded as in Step 4:
+![Misses of the first-pass model against the ratio, and both fits along the ratio](figures/plan/step6-log-scale.png)
 
-| Run | Setting | M3, with AN, AP | M3, without AN, AP | M4, with AN, AP |
-|---|---|---|---|---|
-| AJ | 3 mA/cm², ratio 5 | **0.92** | **1.00** | **0.93** |
-| AH | 6 mA/cm², ratio 5 | 0.32 | 0.50 | 0.35 |
-| AI | 6 mA/cm², ratio 5 | 0.32 | 0.50 | 0.35 |
-| AE | 12 mA/cm², ratio 5 | 0.34 | **0.70** | 0.39 |
-| AF | 12 mA/cm², ratio 10 | 0.18 | 0.30 | **0.54** |
-| AG | 12 mA/cm², ratio 20 | 0.29 | 0.30 | **0.54** |
-| AT | 12 mA/cm², ratio 40 | 0.67 | **0.70** | **0.95** |
-| AN | 24 mA/cm², ratio 5 | 0.48 | | 0.48 |
-| AP | 24 mA/cm², ratio 5 | 0.48 | | 0.48 |
-| Flagged above | | $`2p/n`$ = 0.89 | 0.5, since $`2p/n`$ = 1.14 | 0.5, since $`2p/n`$ = 1.11 |
+- **The misses curve against the ratio.** The ratio-only model fitted to recovery as measured
+  misses high at ratio 5, low at 10 and 20, and high again at 60.
+- **It predicts a recovery that cannot exist.** The straight line crosses zero inside the tested
+  range: at ratio 60 it predicts −1.6 % (95 % interval −17.6 to 14.5 %). AW recovered 2.5 %.
+- **So the ladder is refitted to the logarithm of recovery** (Step 5, second pass). That curve
+  follows the runs along the whole ratio arm and stays above zero.
 
-- **Without AN and AP, AJ cannot be checked under M3 or M4.** Its leverage is 1 (to within
-  0.000003): AJ is the only run at 3 mA/cm², and left out, it leaves two current-density levels,
-  from which no curve can be estimated. So any model with $`x_1^2`$ passes exactly through AJ
-  whatever it measured, and AJ's leave-one-out miss and Cook's distance cannot be worked out. The
-  same holds with $`x_1`$ from $`i`$. Step 5's leave-one-out error therefore cannot judge M3 or M4
-  on these seven runs.
-- **With AN and AP, AJ still carries the low end of the curve** (0.92 under M3): its leave-one-out
-  miss is its residual multiplied by about 12.
-- **AT, the only run at ratio 40, carries the high end of the ratio arm**, and under M4 (0.95) it
-  would decide the ratio's curvature almost alone.
-- **What would ease it:** a repeat of AJ's setting, which would also add to the pure error; and the
-  results of AW (ratio 60), which would give the ratio arm a second run beyond ratio 20.
-- **Residuals, the Q–Q plot and Cook's distances** wait for Step 5 to choose the models.
+#### Checks of the final model
 
-#### Example with made-up runs
+![Parity, misses against current density, Q–Q and influence for the final model](figures/plan/step6-checks.png)
 
-![Parity, residuals, Q–Q and influence for the chosen P model](figures/plan/step6-checks.png)
+| Run | AJ | AH | AI | AE | BD | BE | AF | AG | AT | AW | AN | AP |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Measured recovery (%) | 22.9 | 36.6 | 37.7 | 38.3 | 29.1 | 28.1 | 18.2 | 8.2 | 3.7 | 2.5 | 39.5 | 26.3 |
+| Predicted, run left out (%) | 33.6 | 31.6 | 31.5 | 31.4 | 32.6 | 32.7 | 15.7 | 7.8 | 4.0 | 2.6 | 31.3 | 33.0 |
+| Leverage $`h_{kk}`$ | 0.12 | 0.12 | 0.12 | 0.12 | 0.12 | 0.12 | 0.09 | 0.16 | **0.34** | **0.49** | 0.12 | 0.12 |
+| Standardised residual $`r_k`$ | **−2.02** | 0.77 | 0.94 | 1.04 | −0.60 | −0.80 | 0.78 | 0.25 | −0.35 | −0.13 | 1.23 | −1.19 |
+| Cook's distance $`D_k`$ | 0.27 | 0.04 | 0.06 | 0.07 | 0.02 | 0.04 | 0.03 | 0.01 | 0.03 | 0.01 | 0.10 | 0.09 |
 
-The chosen model for P is M3, with $`x_1`$ from $`\ln i`$ (Step 5).
-
-| Run | M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8 | M9 | M10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Leverage $`h_{kk}`$ | **0.89** | 0.25 | 0.25 | 0.21 | 0.21 | 0.21 | **0.89** | 0.14 | 0.29 | 0.66 |
-| Standardised residual $`r_k`$ | −0.41 | −0.40 | 0.87 | −1.74 | 1.13 | 0.90 | 0.41 | −0.76 | −0.70 | 1.07 |
-| Cook's distance $`D_k`$ | 0.34 | 0.01 | 0.06 | 0.20 | 0.08 | 0.05 | 0.34 | 0.02 | 0.05 | **0.56** |
-
-Flagged above $`2p/n`$ = 0.8 for leverage and $`4/n`$ = 0.4 for Cook's distance.
+Flagged above $`2p/n`$ = 0.33 for leverage, $`4/n`$ = 0.33 for Cook's distance, and beyond ±2 for
+the standardised residual.
 
 Reading them:
 
-- **Parity:** every run's leave-one-out prediction lies inside the band of ±2 pure errors.
-- **Residuals:** scattered around zero with no curve and no funnel, and none beyond ±2 (the largest
-  is M4, −1.74): no missing term, no need for $`\ln P`$.
-- **Q–Q:** the points lie close to the line; Shapiro–Wilk p = 0.57, so nothing suggests the errors
-  are not normal (with ten runs, only a gross departure would show).
-- **Leverage:** M1 and M7 are flagged. They are the two ends of the current-density arm, high by
+- **Parity:** every run but AJ is predicted, left out, within two pure errors (9.2 points). AJ was
+  predicted 33.6 % and recovered 22.9 %.
+- **Standardised residuals:** AJ is just beyond −2, so it is flagged, and checked with the lab;
+  every other run lies within ±1.3.
+- **Against current density:** no trend from 6 to 24 mA/cm²; only AJ, at 3 mA/cm², is low. If that
+  is real, recovery falls at a low current density, perhaps because lithium diffuses back over
+  AJ's 16 hours. A single run cannot show it; a repeat at 3 mA/cm² can (Step 9).
+- **Q–Q:** the points lie close to the line; Shapiro–Wilk p = 0.44, so nothing suggests the errors
+  are not normal.
+- **Leverage:** AT (0.34) and AW (0.49), the far end of the ratio arm, are flagged, as expected by
   construction.
-- **Cook's distance:** M10, the end of the ratio arm, is flagged.
-
-Refitting without each flagged run, the size of each coefficient's shift $`\lvert \Delta_{jk} \rvert`$, in standard errors:
-
-| Left out | $`b_0`$ | $`b_1`$, on $`x_1`$ | $`b_2`$, on $`x_2`$ | $`b_3`$, on $`x_1^2`$ |
-|---|---|---|---|---|
-| M1 | 0.10 | 0.78 | 0.15 | 0.70 |
-| M7 | 0.41 | 0.78 | 0.15 | 0.80 |
-| M10 | **1.14** | 0.08 | **1.33** | 0.11 |
-
-- **M1 and M7**, despite their leverage, move no coefficient by a full standard error: they sit far
-  out but agree with the others.
-- **M10** moves the ratio coefficient from −1.12 to −1.29 (1.33 standard errors) and the intercept
-  from 4.36 to 4.22. So M10 largely decides how fast P falls with magnesium: it is the run to check
-  first with the lab, and the reason to run another high ratio.
+- **Cook's distance:** no run reaches 0.33; the largest is AJ's, 0.27.
+- **Refitting without AT, or without AW,** moves each coefficient by 0.23 standard errors at most:
+  no single run decides the result.
+- **On the log scale there is no funnel:** the spread of the misses does not grow with the level.
 
 </details>
 
 ## Step 7: Compare with a flexible model
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
 Fit a far more flexible model, one that assumes no equation shape at all, to the same runs, and
@@ -1584,7 +1504,7 @@ judge it by the same leave-one-out error.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 A polynomial can only follow the shapes its terms allow. If a model free to follow any shape
@@ -1594,7 +1514,7 @@ something. The manuscript makes the same comparison.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 7 starts from
@@ -1739,180 +1659,159 @@ unseen runs, that is $`Q^2`$, RMSE and MAE, are all reported.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-To show: for each output, the leave-one-out RMSE, MAE and $`Q^2`$ of the polynomial and of the
-boosted trees side by side, with $`s_{\text{pe}}`$; each model's leave-one-out prediction of every
-run; and both models' parity plots.
+To show: the leave-one-out RMSE, MAE and $`Q^2`$ of the polynomial and of the boosted trees side by
+side, with $`s_{\text{pe}}`$; each model's leave-one-out prediction of every run; and both models'
+parity plots.
 
-#### Where the GO-10 runs stand against the trees
+#### The GO-10 runs
 
-What the GO-10 settings already say, before any output is used:
+![Leave-one-out error of the polynomial and of boosted trees, and both models along the ratio](figures/plan/step7-comparison.png)
 
-- **Two runs will be predicted by flat extrapolation.** Left out, AJ (the only run at 3 mA/cm²)
-  lies below every other current density, and AT (the only run at ratio 40) above every other
-  ratio. The trees can only give them the value of the nearest runs still in (6 mA/cm² and ratio
-  20), so their leave-one-out misses measure that, not the trees' skill. This holds with or
-  without AN and AP. AN and AE also sit just beyond the others when left out, but only by
-  0.05 and 0.01 mA/cm², which changes nothing.
-- **Each fit learns from 8 runs (or 6 without AN and AP).** A depth-2 tree has up to four leaves,
-  so many leaves hold one or two runs, and the leaf shrinkage $`\lambda`$ = 1 halves a one-run
-  leaf.
-- **The manuscript's own comparison** (GO-10, Na/Li brines) found the same order: cross-validated
-  R² of 0.68 for the polynomial and −0.21 for XGBoost, worse than predicting the average.
-
-#### Example with made-up runs
-
-![Leave-one-out error of the polynomial and of boosted trees, and both models along the current-density arm](figures/plan/step7-comparison.png)
-
-| Model | LOO RMSE | LOO MAE | $`Q^2`$ |
+| Model | LOO RMSE (points) | LOO MAE (points) | $`Q^2`$ |
 |---|---|---|---|
-| Polynomial (M3) | 0.31 | 0.29 | 0.95 |
-| Boosted trees | 0.98 | 0.69 | 0.46 |
-| Pure error, for comparison | 0.31 | | |
+| Polynomial (M1, log of recovery) | 5.61 | 4.59 | 0.81 |
+| Boosted trees | 10.28 | 8.36 | 0.36 |
+| Pure error, for comparison | 4.61 | | |
 
 Each run predicted with itself left out:
 
-| Run | M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8 | M9 | M10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Measured P | 5.59 | 5.82 | 6.09 | 4.31 | 4.94 | 4.89 | 2.02 | 3.77 | 3.05 | 2.60 |
-| Polynomial | 5.90 | 5.93 | 5.84 | 4.79 | 4.63 | 4.64 | 1.71 | 3.97 | 3.25 | 2.15 |
-| Boosted trees | 5.96 | 6.09 | 5.82 | 4.91 | 4.60 | 4.62 | **4.71** | 4.71 | 3.77 | **3.05** |
+| Run | AJ | AH | AI | AE | BD | BE | AF | AG | AT | AW | AN | AP |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Measured recovery (%) | 22.9 | 36.6 | 37.7 | 38.3 | 29.1 | 28.1 | 18.2 | 8.2 | 3.7 | 2.5 | 39.5 | 26.3 |
+| Polynomial | 33.6 | 31.6 | 31.5 | 31.4 | 32.6 | 32.7 | 15.7 | 7.8 | 4.0 | 2.6 | 31.3 | 33.0 |
+| Boosted trees | 36.7 | 23.0 | 36.4 | 29.2 | 28.4 | 32.2 | **38.2** | 12.1 | 2.5 | **10.2** | 26.4 | 38.2 |
 
-Reading them:
+Reading it:
 
-- **The rule:** the trees' leave-one-out RMSE is higher than the polynomial's, not lower, so the
+- **The rule:** the trees' leave-one-out error is higher than the polynomial's, not lower, so the
   polynomial stands.
-- **The trees' biggest misses are the ends of the arms.** M7, at 24 mA/cm², is predicted 4.71
-  (measured 2.02), the value of the 12 mA/cm² runs: left out, nothing beyond 12 remains. M10, at
-  ratio 40, is predicted 3.05, the value of M9 at ratio 20. The polynomial follows the trend past
-  the last run still in and misses them by 0.31 and 0.45.
-- **In the middle of the design the two agree** (M2 to M6), within the pure error.
-- **The right panel shows why:** fitted to all ten runs, the trees give a staircase, flat beyond
-  24 mA/cm², while the polynomial gives a smooth curve with its peak near 5 mA/cm², as the
-  made-up truth has.
+- **The trees' biggest misses are on the ratio arm.** Left out, AF (ratio 10) is given the value of
+  the ratio-5 runs, 38.2 %, and AW (ratio 60), beyond every other ratio, is given 10.2 %: a tree
+  can only repeat values of runs it has seen. The polynomial follows the trend between and beyond
+  them.
+- **The right panel shows why:** fitted to all the runs, the trees give a staircase along the ratio,
+  while the polynomial gives a smooth curve through the runs.
+- **The manuscript's own comparison** (GO-10, Na/Li brines) found the same order: cross-validated
+  R² of 0.68 for the polynomial and −0.21 for XGBoost.
 
 </details>
 
-## Step 8: Find the best setting under the limits
+## Step 8: Find the setup that recovers the most lithium
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
-For each feed ratio, the current density that gives the highest predicted P while the predicted
-lithium recovery stays at or above 35 % and the predicted highest stack voltage at or below 20 V.
+The one setup, a Mg/Li ratio, a current density and the run length that goes with it, with the
+highest predicted lithium recovery, inside the tested range and with the stack voltage at or below
+20 V.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
-This is the research question: the most selective setting that neither breaks the membranes nor
-leaves most of the lithium behind. A brine's Mg/Li ratio is set by nature, not chosen, so the
-useful answer is not one point but a recommendation per ratio: for this much magnesium, run this
-current.
+This is the question the model is built to answer: which setup harvests the most of the lithium on
+offer. Of the setup, only the current density and the run length are the lab's to choose; a
+brine's ratio is set by nature. So the ratio in the answer says which brines the process suits
+best, and the current density says how to run it.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 8 starts from
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\hat P`$, $`\widehat{\text{recovery}}`$, $`\hat U_{\max}`$ | the chosen equation for each output, in coded units | [Choosing the model](#choosing-the-model), Step 5 |
-| $`n`$, $`p`$, $`s`$, $`\left(X^\top X\right)^{-1}`$ | for each output's chosen model: the runs, the coefficients, the typical miss and the matrix from the fit | calculation: [Fitting by least squares](#fitting-by-least-squares), [How well it fits](#how-well-it-fits), Step 5 |
+| $`\widehat{\text{recovery}}`$ | the chosen equation, its prediction turned back into a recovery | [Choosing the model](#choosing-the-model), Step 5; [When the log of recovery is needed](#when-the-log-of-recovery-is-needed), Step 6 |
+| $`n`$, $`p`$, $`s`$, $`\left(X^\top X\right)^{-1}`$ | the chosen model's runs, coefficients, typical miss and the matrix from the fit | calculation: [Fitting by least squares](#fitting-by-least-squares), [How well it fits](#how-well-it-fits), Step 5 |
 | $`v_{\text{mid}}`$, $`v_{\text{half}}`$, $`v_{\min}`$, $`v_{\max}`$ | the coding of each input, and the lowest and highest tested values | calculation: [Coding](#coding), Step 4 |
-| $`s_{\text{pe}}`$ | the pure error of P | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+| $`s_{\text{pe}}`$ | the pure error of recovery | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
 | $`Q`$, $`A`$ | the charge each run passed, and the membrane area per cell pair | calculation: [building blocks](#building-blocks), Step 1<br>CSV: `runs.csv` → `area_cm2`<br>Model: `Run.area_cm2` |
+| each run's highest stack voltage | the highest voltage across the stack during the run, in V | CSV: `stack_readings.csv` → `meter_voltage_v`, the run's highest<br>Model: `StackReading.meter_voltage_v`, over `Run.stack_readings` |
+| each run's starting concentrate | the salt and strength the concentrate began with | CSV: `runs.csv` → `conc_start_salt`, `conc_start_g_l`<br>Model: `Run.conc_start_salt`, `Run.conc_start_g_l` |
 
-Step 8 reads nothing new from the files.
+Step 8 reads one new column, the stack voltage, to check the 20 V limit against what was measured.
 
 #### The question, as an equation
 
-For each feed ratio $`R`$:
-
-$$\displaystyle \max_{i}\; \hat P(i, R) \quad \text{subject to} \quad \widehat{\text{recovery}}(i, R) \ge 35\ \%, \qquad \hat U_{\max}(i, R) \le 20\ \text{V}, \qquad i_{\min} \le i \le i_{\max}$$
+$$\displaystyle \max_{i,\,R}\; \widehat{\text{recovery}}(i, R) \quad \text{subject to} \quad i_{\min} \le i \le i_{\max}, \qquad R_{\min} \le R \le R_{\max}$$
 
 Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\max_{i}`$ | the current density that makes what follows as large as it can be | notation |
-| $`\hat P(i, R)`$, $`\widehat{\text{recovery}}(i, R)`$, $`\hat U_{\max}(i, R)`$ | each chosen equation, evaluated at the setting $`(i, R)`$: coded by Step 4, the prediction turned back into real units | calculation |
-| 35 % | the recovery floor: below it, most of the lithium stays in the diluate. Provisional, so the answer is also shown at 30 % and 40 % | the project's choice |
-| 20 V | the voltage ceiling: the most the stack can hold; above it the membranes break | the lab |
-| $`i_{\min}`$, $`i_{\max}`$ | the lowest and highest tested current densities: a polynomial is not to be trusted beyond the runs it was fitted to | Step 4: $`v_{\min}`$, $`v_{\max}`$ |
+| $`\max_{i,\,R}`$ | the setting, current density and ratio, that makes what follows as large as it can be | notation |
+| $`\widehat{\text{recovery}}(i, R)`$ | the chosen equation evaluated at the setting $`(i, R)`$: coded as in Step 4, the prediction turned back into a recovery | calculation |
+| $`i_{\min}`$, $`i_{\max}`$, $`R_{\min}`$, $`R_{\max}`$ | the lowest and highest tested current densities and ratios: a polynomial is not to be trusted beyond the runs it was fitted to | Step 4: $`v_{\min}`$, $`v_{\max}`$ |
 
-The answer is one current density per ratio, because a brine's ratio is set by nature, not chosen.
-The ratios searched are the tested ones, and the recommended current is also plotted against the
-ratio over the whole tested range.
+The settings are searched on a fine grid: every 0.1 mA/cm² of current density, and 60 ratios evenly
+spaced on a log scale. With two inputs and a smooth equation, a grid finds the best value without
+the risk of a search method stopping at the wrong place.
 
-The current densities are searched on a grid, every 0.1 mA/cm² from $`i_{\min}`$ to
-$`i_{\max}`$: with one input to search, a grid finds the best value without the risk of a search
-method stopping at the wrong place.
+#### The 20 V limit
 
-#### The uncertainty of each prediction
+20 V is the most the stack can hold; above it the membranes break (the lab). There is no model of
+the voltage yet, so the limit is checked against what was measured: a current density is allowed
+only if every tested run at that current density, with the same starting concentrate, stayed at or
+below 20 V.
+
+#### The uncertainty of the prediction
 
 Every prediction carries a 95 % prediction interval: the range a new run at that setting is
-expected to fall in, 19 times in 20.
+expected to fall in, 19 times in 20. It is worked out on the scale the model was fitted on, the
+logarithm of recovery, and then turned back:
 
-$$\displaystyle \hat y_0 \pm t_{0.975,\,n-p}\; s \sqrt{1 + h_0}, \qquad h_0 = x_0^\top \left(X^\top X\right)^{-1} x_0$$
+$$\displaystyle \hat y_0 \pm t_{0.975,\,n-p}\; s \sqrt{1 + h_0}, \qquad h_0 = x_0^\top \left(X^\top X\right)^{-1} x_0, \qquad \text{recovery between } e^{\hat y_0 - \text{half-width}} \text{ and } e^{\hat y_0 + \text{half-width}}$$
 
 Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\hat y_0`$ | the predicted output at the setting being considered | calculation: the chosen equation |
-| $`x_0`$ | that setting, coded and written as one row of the design matrix: 1, $`x_1`$, $`x_2`$, … for the model's terms | calculation: [Coding](#coding), Step 4 |
-| $`h_0`$ | the leverage of that setting: how far it is from the tested runs. It is small in the middle of the design and grows towards the edges and off the arms of the cross | calculation: the second equation above; the same as [Leverage](#leverage), Step 6, for a setting not yet run |
+| $`\hat y_0`$ | the predicted logarithm of recovery at the setting being considered | calculation: the chosen equation |
+| $`x_0`$ | that setting, coded and written as one row of the design matrix: 1, then the model's terms | calculation: [Coding](#coding), Step 4 |
+| $`h_0`$ | the leverage of that setting: how far it is from the tested runs | calculation: the second equation above; the same as [Leverage](#leverage), Step 6, for a setting not yet run |
 | $`t_{0.975,\,n-p}`$ | the t value that leaves 2.5 % in each tail, with $`n - p`$ degrees of freedom | statistical table |
-| $`s`$ | the typical miss of that output's model | Step 5 |
+| $`s`$ | the typical miss of the model, on the log scale | Step 5 |
 | the 1 under the root | the new run's own scatter; $`h_0`$ adds the uncertainty of the fitted equation | |
-| ± half-width | $`t_{0.975,\,n-p}\, s \sqrt{1 + h_0}`$: the distance from the prediction to either end of the interval | calculation |
+| half-width | $`t_{0.975,\,n-p}\, s \sqrt{1 + h_0}`$: the distance from the prediction to either end of the interval, on the log scale | calculation |
+| $`e^{v}`$ | the exponential, which turns a logarithm back into a recovery | notation |
 
-Each output has its own model, so its own $`n`$, $`p`$, $`s`$ and interval.
-
-#### Two sets of gates: the point gates and the cautious gates
-
-The point gates, applied to the predictions themselves, are the equation above. The cautious gates
-require the unfavourable end of each interval to pass:
-
-$$\displaystyle \widehat{\text{recovery}} - \text{half-width}_{\text{recovery}} \ge 35\ \%, \qquad \hat U_{\max} + \text{half-width}_{U} \le 20\ \text{V}$$
-
-Variables:
-
-| Symbol | What it is | Where it comes from |
-|---|---|---|
-| $`\text{half-width}_{\text{recovery}}`$, $`\text{half-width}_{U}`$ | the half-widths of the recovery and voltage intervals at that setting | calculation: [The uncertainty of each prediction](#the-uncertainty-of-each-prediction) |
-
-Both answers are reported. The point answer is the best estimate; the cautious one is the safer
-recommendation, because a new run there should still pass even if it comes out at the bad end of
-its interval. Each interval is 95 % on its own; the chance that both outputs land inside their
-intervals at once is somewhat lower.
+Turned back, the interval is wider above the prediction than below it: recovery can rise further
+than it can fall.
 
 #### How close to the best is close enough
 
-The best current is a single number, but a run cannot tell apart two settings whose P differs by
-less than the experiment's own scatter. So a working window is reported with it: every current
-density that passes the gates and whose predicted P is within one pure error of the best,
+A run cannot tell apart two settings whose recovery differs by less than the experiment's own
+scatter. So a working window is reported with the best setup: every setting whose predicted
+recovery is within one pure error of the best,
 
-$$\displaystyle \hat P(i, R) \ge \hat P_{\text{best}}(R) - s_{\text{pe}}$$
+$$\displaystyle \widehat{\text{recovery}}(i, R) \ge \widehat{\text{recovery}}_{\text{best}} - s_{\text{pe}}$$
 
 Variables:
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| $`\hat P_{\text{best}}(R)`$ | the highest predicted P that passes the gates at ratio $`R`$ | calculation: [The question, as an equation](#the-question-as-an-equation) |
-| $`s_{\text{pe}}`$ | the pure error of P: the smallest difference a run can show | Step 3 |
+| $`\widehat{\text{recovery}}_{\text{best}}`$ | the highest predicted recovery found | calculation: [The question, as an equation](#the-question-as-an-equation) |
+| $`s_{\text{pe}}`$ | the pure error of recovery: the smallest difference a run can show | Step 3 |
+
+#### When the model cannot choose
+
+If an input has no term in the chosen equation, the predicted recovery is the same at every value
+of it, and recovery cannot choose. For current density the rule is then the **shortest safe run**:
+the highest tested current density whose runs, with the same starting concentrate, all stayed at
+or below 20 V. Every run passes the same charge, so a higher current density delivers it in less
+time.
 
 #### Run length
 
 The tested runs all passed the same charge per membrane area, so each current density was tested
-with one run length, and the outputs (recovery above all) are whole-run results at that charge. A
-recommended current therefore comes with its run length:
+with one run length, and recovery is a whole-run result at that charge. A recommended current
+density therefore comes with its run length:
 
 $$\displaystyle \tau = \frac{Q / A}{i}$$
 
@@ -1924,118 +1823,91 @@ Variables:
 | $`Q / A`$ | the charge per membrane area the tested runs passed, in mA·h/cm² (1 mA·h = 3.6 C) | calculation: [building blocks](#building-blocks), Step 1 |
 | $`i`$ | the recommended current density, in mA/cm² | [The question, as an equation](#the-question-as-an-equation) |
 
-#### Conditions stated with every recommendation
+#### Conditions stated with the recommendation
 
-- **Run length comes with it**, as above. A recommendation is for that current *and* that run
-  length; a longer run at the same current passes more charge, and its outputs were never tested.
+- **Run length comes with it.** A recommendation is for that current density *and* that run
+  length; a longer run at the same current density passes more charge, and its recovery was never
+  tested.
 - **Off the two arms of the cross, the model assumes no interaction:** that current density has
   the same effect at every ratio. That assumption is untested until runs off the arms exist.
-- **The 35 % recovery floor is provisional.** The recommendation is also shown at 30 % and 40 %,
-  so the reader sees how much it depends on the floor.
-- **Where no current density passes both gates at a ratio**, that is reported, with the setting
-  that comes closest and how far it falls short. A gate that can be met only beyond the tested
-  range is reported as such, not extrapolated.
+- **The voltage limit is checked by measurement, not predicted**, so only current densities that
+  were actually run, with the same concentrate, can be recommended.
+- **Nothing outside the tested range is recommended.**
 
-#### Finding the best setting, in simple terms
+#### Finding the best setup, in simple terms
 
-> **The question is: how selective can the stack be without breaking the rules?** For one brine,
-> try every current from the lowest tested to the highest, in small steps. Throw out every current
-> where the model predicts that too little lithium is recovered, or that the stack would go over
-> 20 V. Of the currents left, take the one with the highest predicted P.
+> **The question: which setup gets the most lithium out?** Try every setting the runs cover, in
+> small steps, and take the one with the highest predicted recovery.
 >
-> **Why the answer moves with the brine:** more magnesium competes harder for the current, so it
-> takes more current to recover the same share of lithium. A rule like "run 6 mA/cm²" is replaced
-> by a table: for this much magnesium, run this current.
+> **When the answer is flat:** if the model says recovery is the same at every current density,
+> recovery cannot pick the current. Then pick the fastest run the stack is known to survive: the
+> same charge, in less time, without going over 20 V.
 >
-> **Why two answers:** the model's predictions are estimates with an error bar. The point answer
-> trusts the estimate; the cautious answer asks that the setting pass even if the run comes out at
-> the bad end of its error bar.
+> **Why an interval:** the prediction is an estimate with an error bar. A new run at the
+> recommended setup should land inside it 19 times in 20.
 >
-> **Why a window, not a point:** if 6 and 7 mA/cm² give P values closer than two repeat runs
-> would, no experiment could tell which is better, so both are good answers.
+> **Why a window, not a point:** settings whose predicted recoveries differ by less than two repeat
+> runs would cannot be told apart by any experiment, so all of them are good answers.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
-To show: a table with one row per ratio (recommended current density, working window, run length,
-predicted P with its interval, predicted recovery, predicted highest voltage), for the point and
-the cautious gates; a plot of predicted P against current density at several ratios with the
-gated-out parts marked; and the recommendation at the 30 %, 35 % and 40 % floors.
+To show: the best setup (ratio, current density, run length) with its predicted recovery and
+interval, the working window, and the voltage measured at each tested current density.
 
-#### Where the GO-10 runs stand for the search
+#### The best setup for the GO-10 runs
 
-- **The search range:** current density 3.06 to 24.11 mA/cm² with AN and AP, or 3.06 to
-  12.12 mA/cm² without them; ratio 5 to 40 by mass (molar 1.43 to 11.42). AW's results would
-  extend the ratio to 60.
-- **The charge per area is the same in every GO-10 run:** 48.1 to 48.9 mA·h/cm² (AE 48.5), as
-  designed. So the run length is about 48.5 / $`i`$ hours: 16 h at 3 mA/cm², 8 h at 6, 4 h at 12
-  and 2 h at 24, as the runs were done.
-- **Only ratio 5 was tested at more than one current.** Every recommendation at another ratio and
-  a current other than 12 mA/cm² is off the arms of the cross, and rests on the no-interaction
-  assumption.
-- **Without AN and AP, nothing above 12.1 mA/cm² can be recommended.** If a high ratio needs more
-  current than that to reach the recovery floor, the answer at that ratio is "beyond the tested
-  range".
-- **At the base run, AE's measured recovery, 38.3 %, is just above the 35 % floor**, so the floor
-  is likely to decide the answer at ratio 5 and above.
+![Predicted recovery along the ratio with its interval, and the measured highest voltage of each run](figures/plan/step8-best-setup.png)
 
-#### Example with made-up runs
+1. **Ratio: 5, the lowest tested.** Predicted recovery **32.1 %**, 95 % interval 21.1 to 49.0 %.
+   Recovery falls as about 1/R, so the less magnesium per lithium, the more lithium is recovered;
+   the working window (within one pure error, 4.6 points) reaches only ratio 5.8. For brines this
+   means the process suits low-magnesium brines best: at ratio 60 it recovers about 2.6 %.
+2. **Current density: the model cannot choose.** It has no current-density term (Step 5), so every
+   current density from 3.06 to 24.11 mA/cm² predicts 32.1 % at ratio 5. The shortest-safe-run
+   rule decides:
 
-![Predicted P against current density at four ratios, with the gated-out part dashed](figures/plan/step8-best-setting.png)
+   | Current density | Run length | Highest voltage measured | Starting concentrate |
+   |---|---|---|---|
+   | 3 mA/cm² | 16 h | 6.6 V | standard (LiCl, 0.5 g/L) |
+   | 6 mA/cm² | 8 h | 10.0 and 10.2 V | standard |
+   | 12 mA/cm² | 4 h | 15.9, 15.9 and 16.2 V at ratio 5 (12.4 to 15.9 V at higher ratios) | standard |
+   | 24 mA/cm² | 2 h | 18.3 and 16.8 V | **NaCl or LiCl at 5 g/L, not the standard** |
 
-| Ratio (mass) | Recommended current density | Working window | Run length | Predicted P (95 % interval) | Predicted recovery | Predicted highest voltage | Cautious recommendation |
-|---|---|---|---|---|---|---|---|
-| 5 | 5.8 mA/cm² | 5.8 to 7.8 | 8.3 h | 5.93 ± 0.68 | 35.2 % | 8.7 V | 6.7 mA/cm² |
-| 10 | 7.7 mA/cm² | 7.7 to 9.1 | 6.2 h | 4.89 ± 0.66 | 35.2 % | 9.2 V | 8.8 mA/cm² |
-| 20 | 10.2 mA/cm² | 10.2 to 11.5 | 4.7 h | 3.61 ± 0.69 | 35.1 % | 10.1 V | 11.8 mA/cm² |
-| 40 | 13.5 mA/cm² | 13.5 to 14.7 | 3.6 h | 2.09 ± 0.78 | 35.0 % | 11.4 V | 16.0 mA/cm² |
-
-Run length is the same charge per area as the experiments (48 mA·h/cm²) divided by the current
-density.
-
-The interval of P at ratio 5, worked: $`t_{0.975,\,6}`$ = 2.45 (10 runs, 4 coefficients),
-$`s`$ = 0.247, and the setting's leverage $`h_0`$ = 0.27, so the half-width is
-2.45 × 0.247 × √1.27 = **0.68**.
-
-Reading it:
-
-- **The recovery floor decides every row.** P alone would be highest near 4.8 mA/cm² at every
-  ratio, but there the predicted recovery is below 35 %. So the recommendation is the lowest
-  current that still recovers 35 %, and more magnesium needs more current.
-- **The voltage ceiling never comes close:** 11.4 V at most, against 20 V.
-- **The working window runs upwards** from the recommendation: up to 2 mA/cm² more costs less P
-  than a repeat run's scatter, and buys recovery.
-- **The cautious recommendations sit higher**, because they require the *lower* end of the
-  recovery interval to clear 35 %.
-- **Ratios 10 to 40 at currents other than 12 mA/cm²** are off the arms of the cross, so those
-  rows rest on the no-interaction assumption.
-
-How much the answer depends on the floor:
-
-| Recovery floor | Ratio 5 | Ratio 10 | Ratio 20 | Ratio 40 |
-|---|---|---|---|---|
-| 30 % | 4.8 | 5.9 | 7.8 | 10.4 |
-| 35 % | 5.8 | 7.7 | 10.2 | 13.5 |
-| 40 % | 7.5 | 10.0 | 13.3 | 17.7 |
-
-At a 30 % floor and ratio 5, the floor no longer binds, and the recommendation is P's own peak,
-4.8 mA/cm².
+   - **24 mA/cm² stayed under 20 V only with a stronger, more conductive concentrate.** With the
+     standard concentrate it was never run. The standard runs at ratio 5 climb by about 1.0 V per
+     mA/cm² (6.6 V at 3, 10.1 V at 6, 16.0 V at 12), and a straight line through them reaches
+     20 V near 16 mA/cm². So 24 mA/cm² with the standard concentrate could break the 20 V limit.
+   - **The shortest safe run is therefore 12 mA/cm², for 4 hours.**
+3. **The recommended setup: ratio 5, 12 mA/cm², 4 hours, standard concentrate.** Predicted
+   recovery 32 % (21 to 49 %). It is also the lab's chosen operating point and its best-repeated
+   setting: AE, BD and BE recovered 38.3, 29.1 and 28.1 %.
+4. **The interval, worked:** the predicted logarithm of recovery is 2.207 + 1.263 = 3.470. With
+   $`t_{0.975,\,10}`$ = 2.23, $`s`$ = 0.179 and the setting's leverage $`h_0`$ = 0.117, the
+   half-width is 2.23 × 0.179 × √1.117 = 0.42, so recovery lies between $`e^{3.05}`$ = 21.1 % and
+   $`e^{3.89}`$ = 49.0 %. It is wide because the pure error is large, mostly the gap between AE
+   and BD, BE (Step 3).
+5. **Without AN and AP** the same model is chosen, with practically the same coefficients (2.207
+   and −1.262), so the answer is the same.
+6. **The 3 mA/cm² run** (AJ, 22.9 %) is the one hint that a low current density recovers less. It
+   does not change the answer, because the model cannot confirm it (Step 6), but it is one more
+   reason not to run slowly.
 
 </details>
 
 ## Step 9: Test on runs the model has never seen
 
-<details>
+<details open>
 <summary><strong>What</strong></summary>
 
-Predict the outputs of runs whose lab results have not arrived yet, write the predictions down with
+Predict the recovery of runs whose lab results have not arrived yet, write the predictions down with
 their intervals and the date before the results exist, and compare when they arrive.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Why</strong></summary>
 
 Leave-one-out still tests on runs the modeller had seen while choosing the model. A prediction
@@ -2044,23 +1916,23 @@ there is.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>How</strong></summary>
 
 #### What Step 9 starts from
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
-| the chosen equations and their intervals | as in Step 8 | [The uncertainty of each prediction](#the-uncertainty-of-each-prediction), Step 8 |
+| the chosen equation and its interval | as in Step 8 | [The uncertainty of the prediction](#the-uncertainty-of-the-prediction), Step 8 |
 | $`\text{RMSE}_{\text{LOO}}`$ | the chosen model's leave-one-out error | Step 5 |
 | a new run's planned settings | the feed it will be made up with, and the current it will be run at | CSV: `runs.csv` → `li_feed_mg_l`, `mg_feed_mg_l`, `set_current_ma`, `area_cm2`<br>Model: `Run.li_feed_mg_l`, `Run.mg_feed_mg_l`, `Run.set_current_ma`, `Run.area_cm2` |
-| a new run's measured outputs | worked out exactly as for the fitted runs, once its lab results arrive | calculation: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage), Step 1 |
+| a new run's measured recovery | worked out exactly as for the fitted runs, once its lab results arrive | calculation: [Lithium recovery](#lithium-recovery), Step 1 |
 
 #### Writing the predictions down first
 
 For each new run, before its lab results exist: its ratio $`R`$ from the planned feed
 ([Feed ratio](#feed-ratio)), its planned current density from the planned current and the area,
-both coded as in Step 4; then each output predicted with its 95 % interval (Step 8). The
+both coded as in Step 4; then its recovery predicted with its 95 % interval (Step 8). The
 predictions are committed to the repository with their date, so the record shows they came first.
 
 Once the run is done, its measured current density may differ a little from the planned one. The
@@ -2124,7 +1996,7 @@ the model was chosen, in part, to suit the runs it was then tested on.
 
 #### Which new runs, and in what order
 
-- **First, a confirmation run at the recommended setting** (Step 8): the one prediction the
+- **First, a confirmation run at the recommended setup** (Step 8): the one prediction the
   project's conclusion rests on.
 - **Then a run off the arms of the cross**, such as a lower current at a higher ratio: the only
   test of the no-interaction assumption.
@@ -2147,56 +2019,33 @@ changes, and so may the chosen model.
 > runs, one miss happens about one time in five by chance alone. Two misses out of four happen
 > less than 2 times in 100, and then the error bars are too narrow.
 >
-> **The run that matters most** is the one at the recommended setting: if the model's best
+> **The run that matters most** is the one at the recommended setup: if the model's best
 > setting performs as predicted, the recommendation stands on a measured run, not only on a model.
 
 </details>
 
-<details>
+<details open>
 <summary><strong>Results</strong></summary>
 
 To show: a table with one row per new run: its settings, whether it is inside the fitted range,
-the predicted value with its interval and the date it was written down, the measured value, and
-whether the measurement fell inside; the count of misses with its binomial probability; and
+the predicted recovery with its interval and the date it was written down, the measured recovery,
+and whether it fell inside; the count of misses with its binomial probability; and
 $`\text{RMSE}_{\text{new}}`$ beside $`\text{RMSE}_{\text{LOO}}`$.
 
-#### Where the GO-10 runs stand for a blind test
+#### The next GO-10 runs
 
-- **One GO-10 run awaits its lab results: AW** (12 mA/cm², ratio 60 by mass, molar 17.13). AV, AX
-  and AY, also awaiting results, are on the Pristine membrane and outside this plan.
-- **AW lies beyond the fitted ratios** (5 to 40): coded with the present scales, its ratio is
-  $`x_2`$ = 1.39. It tests extrapolation and is reported apart.
-- **Only P and recovery can be predicted blind for AW.** Its stack readings are already in the data
-  files, so its highest voltage is known.
-- **The workbook's newer runs (BA to BF) are not blind tests:** their results exist. Once in the
-  data files, they join the fit, and BD and BE the pure error (Step 3).
-- **So an in-range blind test needs new runs**, in the order above: a confirmation run at the
-  recommended setting, a run off the arms, and a repeat at 3 mA/cm².
+No GO-10 run is waiting for its results: AW's are in the workbook and have been used. So the blind
+test needs new runs. Their predictions, to be written down and dated before they are run:
 
-#### Example with made-up runs
+| New run | Why this one | Predicted recovery (95 % interval) |
+|---|---|---|
+| 12 mA/cm², ratio 5, 4 h, standard concentrate | the recommended setup (Step 8); it also asks whether AE or BD and BE are typical | 32.1 % (21.1 to 49.0 %) |
+| 3 mA/cm², ratio 5, 16 h | repeats AJ, the run that missed most (Step 6): is recovery really lower at a low current density? | 32.1 % (21.1 to 49.0 %) |
+| 6 mA/cm², ratio 20, 8 h | off the arms of the cross: does current density still have no effect at a high ratio? | 7.9 % (5.1 to 12.1 %) |
 
-![Predictions written down before the results, against the measured values](figures/plan/step9-unseen.png)
-
-| Run | Settings | Inside the fitted range? | Predicted P (95 % interval) | Measured later | Miss $`e_0`$ | Inside its interval? |
-|---|---|---|---|---|---|---|
-| N1 | 12 mA/cm², ratio 5 | yes | 4.69 ± 0.66 | 5.00 | 0.31 | yes |
-| N2 | 8 mA/cm², ratio 10 | yes, off the arms | 4.83 ± 0.66 | 4.96 | 0.13 | yes |
-| N3 | 6 mA/cm², ratio 20 | yes, off the arms | 4.41 ± 0.73 | 4.51 | 0.10 | yes |
-| N4 | 12 mA/cm², ratio 60 | no: ratio 60 is beyond 40 | 2.01 ± 0.85 | 2.63 | 0.62 | yes, reported apart |
-
-Reading it:
-
-- **No misses among the three runs inside the range.** Nothing suggests overconfidence; with three
-  runs, even one miss (14 %) would not have.
-- **Leave-one-out was not optimistic:** $`\text{RMSE}_{\text{new}}`$ = 0.20, against
-  $`\text{RMSE}_{\text{LOO}}`$ = 0.31, so the new runs were predicted no worse than it promised.
-- **N2 and N3 sit off the arms of the cross**, so they also test the no-interaction assumption;
-  the made-up truth has no interaction, so they pass. With real runs, an off-arm run that misses
-  its interval is the first sign that the assumption fails.
-- **N4, the extrapolation, misses by twice as much as any of the others** and still falls inside its
-  wider interval. That says the trend held as far as ratio 60, not that the model can be trusted
-  there.
-- **None of the four is at the recommended setting** (5.8 mA/cm², ratio 5): that confirmation run
-  is still the one to do first.
+- **The intervals are wide** because the pure error is large, mostly the gap between AE and BD,
+  BE at the base run. Each new run at ratio 5 also adds to the pure error and narrows them.
+- **24 mA/cm² with the standard concentrate is not proposed** until its voltage is known to stay
+  under 20 V (Step 8).
 
 </details>
