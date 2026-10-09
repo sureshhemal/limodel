@@ -8,20 +8,20 @@ so every Results section is a number, a table or a figure.
 **Scope: GO-10 membranes only.** The model is built from the GO-10 runs; runs on every other
 membrane are left out.
 
-See [polynomial.md](polynomial.md) for the equation itself and
-[how-the-calculator-works.md](how-the-calculator-works.md) for the per-run quantities.
+See [polynomial.md](polynomial.md) for the equation itself; the per-run quantities are defined in
+[Step 1](#step-1-one-row-of-numbers-per-run).
 
 | Step | Status |
 |---|---|
 | 1. One row of numbers per run | to do |
-| 2. Look at the data before fitting | partly done |
+| 2. Look at the data before fitting | to do |
 | 3. Measure the scatter between repeat runs | to do |
 | 4. Prepare the inputs | to do |
-| 5. Fit a ladder of candidate models and compare them | **next — the main gap** |
+| 5. Fit a ladder of candidate models and compare them | to do |
 | 6. Check the chosen model | to do |
-| 7. Compare with a flexible model | planned |
+| 7. Compare with a flexible model | to do |
 | 8. Find the best setting under the limits | to do |
-| 9. Test on runs the model has never seen | to do; AW is the first, once its lab results arrive |
+| 9. Test on runs the model has never seen | to do |
 
 <details>
 <summary><strong>The made-up runs used in the examples</strong></summary>
