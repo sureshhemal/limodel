@@ -1,72 +1,83 @@
 # The polynomial
 
-The equation the project fits. See the [README](../README.md) for the project as a whole,
-and [data-format.md](data-format.md) for where the numbers come from.
+The equation the project fits, in short. Every step, every equation and every number behind it is
+in the [plan for building the model](plan-for-building-the-model.md); see
+[data-format.md](data-format.md) for where the raw numbers come from.
 
-## What we are fitting
+## What is fitted
 
-A second-order polynomial that predicts permselectivity from the two settings that can be
-dialled on the rig:
-
-```
-P̂ = b₀ + b₁·J + b₂·R + b₃·J² + b₄·R² + b₅·J·R
-```
-
-Six coefficients: an intercept, two linear terms, two curvature terms, and one interaction
-term. The interaction is the term that says whether the best current depends on how much Mg
-is in the feed.
-
-## The symbols
+Permselectivity `P`, for the GO-10 membrane, from the two settings chosen at the bench:
 
 | Symbol | Meaning | Unit | Levels run so far |
 |---|---|---|---|
-| `P` | Permselectivity, Li over Mg | — | the outcome |
-| `J` | Current density | mA/cm² | 3, 6, 12, 24 |
-| `R` | Mg/Li ratio in the diluate | mol/mol | 5, 10, 20, 40, 60 |
+| `P` | permselectivity, lithium over magnesium | — | the output |
+| `i` | current density | mA/cm² | 3, 6, 12, 24 |
+| `R` | Mg/Li feed ratio, by moles | mol/mol | 1.43, 2.86, 5.71, 11.4, 17.1 (mass ratios 5, 10, 20, 40, 60) |
 
-`P` above 1 means the membrane favours Li over Mg relative to what the feed offered:
+Both inputs are rescaled to run from −1 to +1 over the tested range: `x₁` from `i` or `ln i` (both
+are tried), `x₂` from `ln R`.
+
+## What P is
 
 ```
-        t_Li / t_Mg
-P = ─────────────────        t_Li = n_Li / (n_Li + 2·n_Mg)
-        c_Li / c_Mg          t_Mg = 2·n_Mg / (n_Li + 2·n_Mg)
+        n_Li / n_Mg
+P = ─────────────────
+        c̄_Li / c̄_Mg
 ```
 
-where `n` is the moles each ion added to the concentrate over the run, and `c` is the molar
-concentration measured in the diluate at minute 0.
+`n` is the moles of each metal the concentrate gained over the run; `c̄` is each metal's log-mean
+concentration in the diluate, between its first and last samples. The top is the Li/Mg ratio that
+crossed, the bottom the Li/Mg ratio the membrane was offered. **P = 1 means no preference**; above
+1, lithium is favoured. This follows the lab's workbook (column BI).
 
-The membrane is not a polynomial variable — it is a category (GO-10, pristine, PDA/PEI/15CE,
-PDA/GO10/PEI). It enters either as a 0/1 indicator or by fitting the equation once per
-membrane.
+## The candidates
 
-## Three polynomials, not one
+A fixed ladder, each rung adding one term to the one below:
 
-The question is *the best P subject to limits*, so every quantity a limit is placed on needs
-its own prediction. Same six-term shape, same `J` and `R`, different outcome column:
+| Model | Equation |
+|---|---|
+| M0 | `ŷ = b₀` |
+| M1 | `ŷ = b₀ + b₂·x₂` |
+| M2 | `ŷ = b₀ + b₂·x₂ + b₁·x₁` |
+| M3 | `ŷ = b₀ + b₂·x₂ + b₁·x₁ + b₃·x₁²` |
+| M4 | `ŷ = b₀ + b₂·x₂ + b₁·x₁ + b₃·x₁² + b₄·x₂²` |
 
-| Fitted | Role | Limit |
-|---|---|---|
-| `P` | what we maximise | — |
-| Li recovery (%) | gate | must reach 35 % |
-| Voltage (V) | gate | must stay at or below 20 V |
+`ŷ` is `P` or `ln P`. The ratio comes first because its effect is certain from the chemistry: more
+magnesium competes harder for the current. There is no `x₁·x₂` term: the runs form a cross (current
+density varied at ratio 5, the ratio varied at 12 mA/cm²), which cannot estimate it.
 
-## The data behind it
+**Choosing:** climb the ladder while the term just added is significant (partial F, p < 0.05),
+every coefficient is significant and the lack-of-fit test passes; then check that the model reached
+also has the lowest AICc and the lowest leave-one-out error.
 
-One row per run: `J` and `R` as the x columns, the three outcomes as the y columns. 21 runs
-exist; 17 have lab results so far. The analyzer builds this table from the four CSV files, and
-leaves out the runs it cannot calculate — no lab results yet, or marked `include = false`.
+## The current result
+
+On the 12 GO-10 runs in the lab's workbook, the ratio model on the log scale is chosen:
+
+```
+ln P̂ = 0.900 − 0.449·x₂        which is        P̂ = 4.38 · R^−0.36
+```
+
+P falls by about 22 % each time the ratio doubles. Current density does not appear, but that means
+*not estimable yet*, not *no effect*: the current-density arm is thin and the repeat runs scatter
+widely (pure error 1.39).
+
+## Recovery and voltage
+
+- **Lithium recovery** is modelled the same way and reported beside the most selective setup, with
+  no limit on it. It follows from P and the ratio.
+- **Stack voltage** has no model yet. The 20 V limit, the most the stack can hold, is checked against
+  the measured runs, so only current densities that were actually run can be recommended.
 
 ## How it is checked: every run, no test set
 
-There is **no train/test split**. Every usable run goes into the fit, and the error comes
-from **leave-one-out cross-validation**: fit on all runs but one, predict the one left out,
-repeat until each run has been the left-out one exactly once.
+There is **no train/test split**. Every usable run goes into the fit, and the error comes from
+**leave-one-out cross-validation**: fit on all runs but one, predict the one left out, repeat until
+each run has been the left-out one exactly once.
 
-With fifteen rows a hold-out set measures nothing. A 75/25 split would train on eleven rows
-for six coefficients and report an error computed from four points — move one run between
-the piles and that error moves with it. Leave-one-out spends no data and gives one honest
-out-of-sample error per run instead of four in total.
+With twelve runs a hold-out set measures nothing. A 75/25 split would train on nine runs and report
+an error computed from three; move one run between the piles and that error moves with it.
+Leave-one-out spends no data and gives one honest out-of-sample error per run.
 
-A real test set is coming on its own: **AV, AW, AX, AY** have no lab results yet. When they
-arrive they are unseen data at settings the model never saw, which is a stronger check than
-any split of the runs already in hand. Predict them before the results land, then compare.
+A real test comes from new runs: their predictions are written down and dated before the lab
+results exist, then compared when they arrive (Step 9 of the plan).

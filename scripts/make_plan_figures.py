@@ -68,8 +68,28 @@ WHOLE_RUN_RECOVERY = {"AJ": "AZ44", "AH": "AZ33", "AI": "AZ33", "AE": "AZ28", "B
                       "BE": "AZ28", "AF": "AZ28", "AG": "AZ28", "AT": "AZ28", "AW": "AZ28",
                       "AN": "AZ17", "AP": "AZ17"}
 WHOLE_RUN_P = {"AJ": "BI44", "AH": "BI36", "AI": "BI36", "AN": "BI20", "AP": "BI20"}
+LAST_SAMPLE_ROW = {"AJ": 40, "AH": 32, "AI": 32, "AN": 16, "AP": 16}  # 24 for the 4-hour runs
 STANDARD_CONCENTRATE = "DI Water +0.5 g/l LiCl"
 REPEAT_GROUPS = [["AH", "AI"], ["AE", "BD", "BE"]]
+
+def log_mean(start, end):
+    return (start - end) / math.log(start / end) if start != end else start
+
+
+def mass_balance(sheet, last):
+    """Each metal lost by the diluate against gained by the concentrate, in mmol, first to last sample."""
+    v = lambda cell: sheet[cell].value
+    out = {}
+    for metal, dil, conc, molar_mass in (("Li", "AT", "AL", 6.94), ("Mg", "AV", "AN", 24.305)):
+        lost = (v(f"{dil}8") * v("AR8") - v(f"{dil}{last}") * v(f"AR{last}")) / molar_mass
+        gained = (v(f"{conc}{last}") * v(f"AJ{last}") - v(f"{conc}8") * v("AJ8")) / molar_mass
+        out[metal] = {"lost": lost, "gained": gained, "gap_pct": 100 * (lost - gained) / lost}
+    li_offered = log_mean(v("AT8"), v(f"AT{last}")) / 6.94
+    mg_offered = log_mean(v("AV8"), v(f"AV{last}")) / 24.305
+    out["ratio_offered"] = mg_offered / li_offered
+    out["P_from_diluate"] = (out["Li"]["lost"] / out["Mg"]["lost"]) / (li_offered / mg_offered)
+    return out
+
 
 book = openpyxl.load_workbook(WORKBOOK, data_only=True)
 runs = []
@@ -84,6 +104,7 @@ for code, cell in WHOLE_RUN_RECOVERY.items():
                  "R": sheet["E4"].value, "mass_ratio": sheet["E3"].value,
                  "recovery": round(sheet[cell].value, 2), "P": round(sheet[WHOLE_RUN_P.get(code, "BI28")].value, 3),
                  "U_max": max(voltages),
+                 "mass_balance": mass_balance(sheet, LAST_SAMPLE_ROW.get(code, 24)),
                  "standard": sheet["I3"].value == STANDARD_CONCENTRATE})
 numbers = {"runs": runs}
 n = len(runs)
@@ -102,10 +123,17 @@ def pure_error(values):
     return ss, nu
 
 
+def pure_error_group(values, group):
+    by_run = dict(zip([r["run"] for r in runs], values))
+    ys = [by_run[c] for c in group]
+    return sum((v - np.mean(ys)) ** 2 for v in ys)
+
+
 ss_pe, nu_pe = pure_error(y_P)
 s_pe = math.sqrt(ss_pe / nu_pe)
 s_pe_rec = math.sqrt(pure_error(y_rec)[0] / nu_pe)
 in_groups = [r["P"] for r in runs if any(r["run"] in g for g in REPEAT_GROUPS)]
+numbers["pure_error_by_group"] = {"+".join(g): math.sqrt(pure_error_group(y_P, g) / (len(g) - 1)) for g in REPEAT_GROUPS}
 numbers["pure_error"] = {"ss": ss_pe, "nu": nu_pe, "s": s_pe, "mean": float(np.mean(in_groups)),
                          "relative": s_pe / np.mean(in_groups),
                          "lo": s_pe * math.sqrt(nu_pe / stats.chi2.ppf(0.975, nu_pe)),
@@ -168,7 +196,8 @@ def fit(rows, y, terms, scale, log_output):
            "mae_loo": float(np.abs(miss).mean()), "q2": 1 - float((miss ** 2).sum()) / float(((measured - measured.mean()) ** 2).sum()),
            "r2": 1 - ss_res / ss_tot, "r2_adj": 1 - (ss_res / ss_tot) * (k - 1) / (k - p),
            "t_p": [float(2 * stats.t.sf(abs(bj / sj), k - p)) for bj, sj in zip(b, se)],
-           "cook": (e ** 2 / (p * s2)) * h / (1 - h) ** 2}
+           "cook": (e ** 2 / (p * s2)) * h / (1 - h) ** 2,
+           "aicc": k * math.log(ss_res / k) + 2 * (p + 1) + 2 * (p + 1) * (p + 2) / (k - p - 2)}
     if p > 1:
         F = ((ss_tot - ss_res) / (p - 1)) / s2
         out["F"], out["F_p"] = F, float(stats.f.sf(F, p - 1, k - p))
@@ -190,18 +219,24 @@ def ladder(y, scale, log_output):
     return fits
 
 
-def choose(fits, s_pe_y):
-    ok = [k for k, f in fits.items()
-          if all(pv < 0.05 for pv in f["t_p"][1:]) and f["lof_p"] >= 0.05 and f["p"] <= f["n"] - 2]
-    best = min(ok, key=lambda k: fits[k]["rmse_loo"])
-    close = [k for k in ok if fits[k]["rmse_loo"] - fits[best]["rmse_loo"] <= s_pe_y]
-    return min(close, key=lambda k: fits[k]["p"])
+def choose(fits):
+    """Climb the ladder while the term just added is significant (partial F, p < 0.05), every
+    coefficient is significant and the lack-of-fit test passes; stop at the first rung that fails."""
+    chosen = "M0"
+    for label in list(TERMS)[1:]:
+        f = fits[label]
+        if f["partial_p"] < 0.05 and all(pv < 0.05 for pv in f["t_p"][1:]) and f["lof_p"] >= 0.05 \
+                and f["p"] <= f["n"] - 2:
+            chosen = label
+        else:
+            break
+    return chosen
 
 
 def summary(fits):
     return {k: {"p": f["p"], "R2": f["r2"], "R2_adj": f["r2_adj"], "F": f.get("F"), "F_p": f.get("F_p"),
                 "partial_F": f.get("partial_F"), "partial_p": f.get("partial_p"), "rmse_loo": f["rmse_loo"],
-                "mae_loo": f["mae_loo"], "lof_F": f["lof_F"], "lof_p": f["lof_p"], "t_p": f["t_p"],
+                "mae_loo": f["mae_loo"], "lof_F": f["lof_F"], "lof_p": f["lof_p"], "t_p": f["t_p"], "aicc": f["aicc"],
                 "b": [round(float(v), 3) for v in f["b"]]} for k, f in fits.items()}
 
 
@@ -209,22 +244,15 @@ plain = {scale: ladder(y_P, scale, False) for scale in ("i", "ln i")}
 logged = {scale: ladder(np.log(y_P), scale, True) for scale in ("i", "ln i")}
 numbers["ladder_plain"] = {scale: summary(f) for scale, f in plain.items()}
 numbers["ladder_log"] = {scale: summary(f) for scale, f in logged.items()}
-numbers["choice_plain"] = {scale: choose(f, s_pe) for scale, f in plain.items()}
-numbers["choice_log"] = {scale: choose(f, s_pe) for scale, f in logged.items()}
+numbers["choice_plain"] = {scale: choose(f) for scale, f in plain.items()}
+numbers["choice_log"] = {scale: choose(f) for scale, f in logged.items()}
 numbers["s_pe_log"] = math.sqrt(pure_error(np.log(y_P))[0] / nu_pe)
 first = plain["ln i"][numbers["choice_plain"]["ln i"]]
-second = logged["ln i"][numbers["choice_log"]["ln i"]]
-final = first if first["rmse_loo"] <= second["rmse_loo"] else second
-runner_up = plain["ln i"]["M1"]
-numbers["final"] = {"model": numbers["choice_plain"]["ln i"] if final is first else numbers["choice_log"]["ln i"],
-                    "log": final["log"], "b": [float(v) for v in final["b"]], "s": math.sqrt(final["s2"]),
-                    "rmse_loo": final["rmse_loo"]}
-numbers["runner_up"] = {"b": [float(v) for v in runner_up["b"]], "se": [float(v) for v in runner_up["se"]],
-                        "t_p": runner_up["t_p"], "rmse_loo": runner_up["rmse_loo"]}
+final = logged["ln i"][numbers["choice_log"]["ln i"]]
 
 # The recovery model, fitted by the same steps; reported in Step 8 only
 rec_fits = ladder(np.log(y_rec), "ln i", True)
-rec_model = rec_fits[choose(rec_fits, s_pe_rec)]
+rec_model = rec_fits[choose(rec_fits)]
 
 
 def predict(f, i, r):
@@ -245,14 +273,35 @@ z_expected = stats.norm.ppf((ranks - 0.5) / n)
 by_level = {}
 for r, e in zip(runs, final["e"]):
     by_level.setdefault(r["mass_ratio"] if abs(r["i"] - 12) < 1 or r["mass_ratio"] != 5 else 5, []).append(float(e))
-numbers["checks"] = {"leverage_limit": 2 * final["p"] / n, "cook_limit": 4 / n,
+numbers["first"] = {"b": [float(v) for v in first["b"]], "rmse_loo": first["rmse_loo"],
+                    "residual_by_ratio": {str(r["mass_ratio"]): round(float(e), 2) for r, e in zip(runs, first["e"]) if abs(r["i"] - 12) < 1 and r["mass_ratio"] != 5},
+                    "at_60": predict(first, 12, max(r["R"] for r in runs))[:3]}
+numbers["final"] = {"model": numbers["choice_log"]["ln i"], "b": [float(v) for v in final["b"]],
+                    "se": [float(v) for v in final["se"]], "t_p": final["t_p"], "s": math.sqrt(final["s2"]),
+                    "rmse_loo": final["rmse_loo"], "mae_loo": final["mae_loo"], "q2": final["q2"],
+                    "exponent_of_R": float(final["b"][1] / CODING["ln R"][1]),
+                    "constant": float(math.exp(final["b"][0] - final["b"][1] * CODING["ln R"][0] / CODING["ln R"][1])),
+                    "residual_by_ratio": {str(r["mass_ratio"]): round(r["P"] - predict(final, r["i"], r["R"])[0], 2)
+                                          for r in runs if abs(r["i"] - 12) < 1 and r["mass_ratio"] != 5}}
+flagged = [r["run"] for r, h, c, sr in zip(runs, final["h"], final["cook"], std_res)
+           if h > 2 * final["p"] / n or c > 4 / n or abs(sr) > 2]
+refits = {}
+for drop in flagged:
+    kept = [r for r in runs if r["run"] != drop]
+    X = matrix(kept, final["terms"], "ln i")
+    b_without = np.linalg.lstsq(X, np.log([r["P"] for r in kept]), rcond=None)[0]
+    refits[drop] = {"b_without": [round(float(v), 3) for v in b_without],
+                    "shift_in_se": [round(float((b - bw) / se), 2) for b, bw, se in zip(final["b"], b_without, final["se"])]}
+numbers["checks"] = {"flagged": flagged, "refits": refits,
+                     "q_eta": {r["run"]: round(r["recovery"] / 100 / (r["P"] / (r["P"] + 2 * r["mass_balance"]["ratio_offered"])), 2) for r in runs},
+                     "mass_balance": {r["run"]: {"Li_gap": round(r["mass_balance"]["Li"]["gap_pct"]), "Mg_gap": round(r["mass_balance"]["Mg"]["gap_pct"]),
+                                                 "P_from_diluate": round(r["mass_balance"]["P_from_diluate"], 2)} for r in runs},"leverage_limit": 2 * final["p"] / n, "cook_limit": 4 / n,
                      "shapiro_p": float(stats.shapiro(final["e"]).pvalue),
                      "spearman_ratio": [float(v) for v in stats.spearmanr([r["R"] for r in runs], final["e"])],
+                     "spearman_ratio_first": [float(v) for v in stats.spearmanr([r["R"] for r in runs], first["e"])],
                      "spearman_i": [float(v) for v in stats.spearmanr([r["i"] for r in runs], final["e"])],
-                     "sd_low_ratio": float(np.std([r["P"] for r in runs if r["mass_ratio"] == 5], ddof=1)),
-                     "sd_high_ratio": float(np.std([r["P"] for r in runs if r["mass_ratio"] >= 20], ddof=1)),
-                     "rows": [{"run": r["run"], "h": round(float(h), 3), "r": round(float(sr), 2),
-                               "cook": round(float(c), 3), "loo_pred": round(float(lp), 2)}
+                     "rows": [{"run": r["run"], "h": round(float(h), 2), "r": round(float(sr), 2),
+                               "cook": round(float(c), 2), "loo_pred": round(float(lp), 2)}
                               for r, h, sr, c, lp in zip(runs, final["h"], std_res, final["cook"], final["loo_pred_measured"])]}
 
 # --- Step 7: boosted trees, leave-one-out ------------------------------------------------------
@@ -270,14 +319,18 @@ numbers["trees"] = {"rmse_loo": float(np.sqrt((tree_miss ** 2).mean())), "mae_lo
                     "q2": 1 - float((tree_miss ** 2).sum()) / float(((y_P - y_P.mean()) ** 2).sum()),
                     "loo": {r["run"]: round(float(t), 2) for r, t in zip(runs, tree_loo)},
                     "poly": {"rmse_loo": final["rmse_loo"], "mae_loo": final["mae_loo"], "q2": final["q2"]},
-                    "runner_up": {"rmse_loo": runner_up["rmse_loo"], "mae_loo": runner_up["mae_loo"], "q2": runner_up["q2"],
-                                  "loo": {r["run"]: round(float(v), 2) for r, v in zip(runs, runner_up["loo_pred_measured"])}}}
+                    "poly_loo": {r["run"]: round(float(v), 2) for r, v in zip(runs, final["loo_pred_measured"])}}
 tree_all = trees().fit(X_raw, y_P)
 ratio_grid = np.exp(np.linspace(math.log(1.2), math.log(20), 300))
 
 # --- Step 8: the most selective setup -----------------------------------------------------------
 r_lo, r_hi = min(r["R"] for r in runs), max(r["R"] for r in runs)
 i_lo, i_hi = float(i_all.min()), float(i_all.max())
+grid = [(i, r) for i in np.arange(round(i_lo, 1), i_hi + 1e-9, 0.1)
+        for r in np.exp(np.linspace(math.log(r_lo), math.log(r_hi), 60))]
+best_i, best_r = max(grid, key=lambda g: predict(final, *g)[0])
+best = predict(final, best_i, best_r)
+window = [r for r in np.exp(np.linspace(math.log(r_lo), math.log(r_hi), 400)) if predict(final, 12, r)[0] >= best[0] - s_pe]
 p_at_5 = {}
 for r in runs:
     if r["mass_ratio"] == 5:
@@ -287,22 +340,20 @@ voltages = {}
 for r in runs:
     key = (round(r["i"] / 3) * 3 if r["i"] < 4 else round(r["i"] / 6) * 6, r["standard"])
     voltages.setdefault(key, []).append(r["U_max"])
-numbers["best"] = {"final_flat": final["p"] == 1, "P_mean": float(y_P.mean()),
-                   "P_interval": [v for v in predict(final, 12, r_lo)[1:3]],
-                   "runner_up_at_5": predict(runner_up, 12, r_lo)[:3],
-                   "runner_up_at_60": predict(runner_up, 12, r_hi)[:3],
+numbers["best"] = {"flat_in_i": "x1" not in final["terms"], "R": best_r, "mass_ratio": best_r * MASS_PER_MOLAR,
+                   "P": best[0], "interval": [best[1], best[2]], "h0": best[3],
+                   "window_upper_mass": max(window) * MASS_PER_MOLAR,
+                   "P_at_60": predict(final, 12, r_hi)[:3],
                    "P_at_ratio_5_by_current": p_at_5,
                    "recovery_at_5": predict(rec_model, 12, r_lo)[:3],
-                   "recovery_terms": rec_model["terms"],
-                   "recovery_b": [float(v) for v in rec_model["b"]],
-                   "recovery_rmse_loo": rec_model["rmse_loo"],
                    "voltages": {f"{k[0]} mA/cm2, {'standard' if k[1] else 'other'} concentrate": v
                                 for k, v in sorted(voltages.items())},
                    "interval_parts": {"t": float(stats.t.ppf(0.975, final["n"] - final["p"])),
-                                      "s": math.sqrt(final["s2"]), "h0": predict(final, 12, r_lo)[3]}}
+                                      "s": math.sqrt(final["s2"]), "ln_P": math.log(best[0])}}
 
 # --- Step 9: predictions written down for the next runs --------------------------------------
-NEXT_RUNS = [("6 mA/cm², ratio 5", 6, 5), ("3 mA/cm², ratio 5", 3, 5), ("12 mA/cm², ratio 5", 12, 5)]
+NEXT_RUNS = [("6 mA/cm², ratio 5", 6, 5), ("12 mA/cm², ratio 5", 12, 5), ("3 mA/cm², ratio 5", 3, 5),
+             ("12 mA/cm², ratio 60", 12, 60), ("6 mA/cm², ratio 20", 6, 20)]
 numbers["next_runs"] = [{"setting": label, "P": [round(v, 2) for v in predict(final, i, mass / MASS_PER_MOLAR)[:3]],
                          "recovery": [round(v, 1) for v in predict(rec_model, i, mass / MASS_PER_MOLAR)[:3]]}
                         for label, i, mass in NEXT_RUNS]
@@ -397,21 +448,49 @@ ax.legend(loc="upper left", fontsize=8)
 ax.set_title("Prediction error up the ladder (GO-10 runs)")
 save(fig, "step5-ladder.png")
 
-# Step 6: checks of the final model
-fig, axes = plt.subplots(2, 2, figsize=(9.6, 7.4))
-ax = axes[0, 0]
+# Step 6a: why the log scale
+fig, axes = plt.subplots(1, 2, figsize=(10.5, 3.6))
+ax = axes[0]
 ax.axhline(0, color=INK_2, linewidth=1)
-ax.scatter([r["mass_ratio"] for r in runs], final["e"], color=colour, zorder=3)
+ax.scatter([r["mass_ratio"] for r in runs], first["e"], color=colour, zorder=3)
 mass_ratio_axis(ax)
 ax.set_xlabel("Mg/Li ratio (mass)"); ax.set_ylabel("miss, measured − fitted P")
-ax.set_title("Misses against the ratio")
+ax.set_title("P as measured: misses against ratio")
+ax = axes[1]
+ax.scatter([r["mass_ratio"] for r in arm_r], [r["P"] for r in arm_r], color=INK, zorder=4, s=36, label="runs at 12 mA/cm²")
+ax.plot(ratio_grid * MASS_PER_MOLAR, [predict(first, 12, r)[0] for r in ratio_grid], color=BLUE, label="fitted to P as measured")
+ax.plot(ratio_grid * MASS_PER_MOLAR, [predict(final, 12, r)[0] for r in ratio_grid], color=ORANGE, label="fitted to the log of P")
+ax.axhline(1, color=INK_2, linewidth=1, linestyle=":")
+ax.axvspan(r_lo * MASS_PER_MOLAR, r_hi * MASS_PER_MOLAR, color=BAND, alpha=0.4, linewidth=0)
+mass_ratio_axis(ax); ax.set_xlabel("Mg/Li ratio, mass (shaded: tested)"); ax.set_ylabel("permselectivity P")
+ax.set_title("The two fits along the ratio")
+ax.legend(loc="upper right", fontsize=8)
+fig.suptitle("Why P is modelled on a log scale (GO-10 runs; dotted: no preference)", fontweight="bold", y=1.03)
+fig.tight_layout()
+save(fig, "step6-log-scale.png")
+
+# Step 6b: checks of the final model
+fig, axes = plt.subplots(2, 2, figsize=(9.6, 7.4))
+ax = axes[0, 0]
+lim = [0, 7]
+ax.fill_between(lim, [v - 2 * s_pe for v in lim], [v + 2 * s_pe for v in lim], color=BAND, linewidth=0)
+ax.plot(lim, lim, color=INK_2, linewidth=1)
+ax.scatter(final["loo_pred_measured"], y_P, color=colour, zorder=3)
+for r, lp, sr in zip(runs, final["loo_pred_measured"], std_res):
+    if abs(sr) > 1.3:
+        ax.annotate(r["run"], (lp, r["P"]), textcoords="offset points", xytext=(6, -3), fontsize=8, color=INK_2)
+ax.set_xlim(lim); ax.set_ylim(lim)
+ax.set_xlabel("predicted P, run left out"); ax.set_ylabel("measured P")
+ax.set_title("Parity (band: ±2 pure errors)")
 ax = axes[0, 1]
+ax.axhspan(-2, 2, color=BAND, linewidth=0)
 ax.axhline(0, color=INK_2, linewidth=1)
-ax.scatter([r["i"] for r in runs], final["e"], color=colour, zorder=3)
-for r, e in zip(runs, final["e"]):
-    if abs(e) > 2:
-        ax.annotate(r["run"], (r["i"], e), textcoords="offset points", xytext=(6, -3), fontsize=8, color=INK_2)
-ax.set_xlabel("current density, mA/cm²"); ax.set_ylabel("miss, measured − fitted P")
+ax.scatter([r["i"] for r in runs], std_res, color=colour, zorder=3)
+for r, sr in zip(runs, std_res):
+    if abs(sr) > 1.3:
+        ax.annotate(r["run"], (r["i"], sr), textcoords="offset points", xytext=(6, -3), fontsize=8, color=INK_2)
+ax.set_ylim(-3, 3)
+ax.set_xlabel("current density, mA/cm²"); ax.set_ylabel("standardised residual")
 ax.set_title("Misses against current density")
 ax = axes[1, 0]
 ax.plot([-2, 2], [-2, 2], color=INK_2, linewidth=1)
@@ -430,8 +509,8 @@ save(fig, "step6-checks.png")
 # Step 7: polynomial against boosted trees
 fig, axes = plt.subplots(1, 2, figsize=(11.0, 3.6), gridspec_kw={"width_ratios": [1, 1.5]})
 ax = axes[0]
-vals = [final["rmse_loo"], runner_up["rmse_loo"], numbers["trees"]["rmse_loo"]]
-bars = ax.bar(["M0 (chosen)", "M1 (ratio)", "boosted trees"], vals, color=BLUE, width=0.5)
+vals = [final["rmse_loo"], numbers["trees"]["rmse_loo"]]
+bars = ax.bar(["polynomial", "boosted trees"], vals, color=BLUE, width=0.5)
 for bb, v in zip(bars, vals):
     ax.annotate(f"{v:.2f}", (bb.get_x() + bb.get_width() / 2, v), textcoords="offset points",
                 xytext=(0, 4), ha="center", color=INK_2)
@@ -442,46 +521,49 @@ ax.set_ylabel("leave-one-out RMSE of P"); ax.grid(axis="x", visible=False)
 ax.set_title("Prediction error on unseen runs")
 ax = axes[1]
 ax.axvspan(r_lo * MASS_PER_MOLAR, r_hi * MASS_PER_MOLAR, color=BAND, linewidth=0, alpha=0.6)
-ax.plot(ratio_grid * MASS_PER_MOLAR, [predict(final, 12, r)[0] for r in ratio_grid], color=BLUE, label="M0, the average (chosen)")
-ax.plot(ratio_grid * MASS_PER_MOLAR, [predict(runner_up, 12, r)[0] for r in ratio_grid], color=BLUE, linestyle="--",
-        label="M1, ratio only (runner-up)")
+ax.plot(ratio_grid * MASS_PER_MOLAR, [predict(final, 12, r)[0] for r in ratio_grid], color=BLUE, label="polynomial")
 ax.plot(ratio_grid * MASS_PER_MOLAR, tree_all.predict(np.column_stack([np.full_like(ratio_grid, 12.0), ratio_grid])),
         color=ORANGE, label="boosted trees", drawstyle="steps-mid")
 ax.scatter([r["mass_ratio"] for r in arm_r], [r["P"] for r in arm_r], color=INK, zorder=4, s=36, label="runs at 12 mA/cm²")
 mass_ratio_axis(ax)
 ax.set_xlabel("Mg/Li ratio, mass (shaded: tested range)"); ax.set_ylabel("P at 12 mA/cm²")
-ax.set_title("The models fitted to all runs")
+ax.set_title("Both models fitted to all runs")
 ax.legend(loc="upper right", fontsize=8)
 fig.suptitle("Permselectivity: polynomial against a flexible model (GO-10 runs)", fontweight="bold", y=1.03)
 fig.tight_layout()
 save(fig, "step7-comparison.png")
 
-# Step 8: what the runs say about the most selective setup
-fig, axes = plt.subplots(1, 2, figsize=(11.0, 3.8))
+# Step 8: the most selective setup
+fig, axes = plt.subplots(1, 3, figsize=(14.5, 3.8))
 ax = axes[0]
-ax.scatter([r["i"] for r in arm_i], [r["P"] for r in arm_i],
-           color=[BLUE if r["standard"] else ORANGE for r in arm_i], zorder=3)
+pred = [predict(final, 12, r) for r in ratio_grid]
+inside = (ratio_grid >= r_lo) & (ratio_grid <= r_hi)
+ax.fill_between(ratio_grid[inside] * MASS_PER_MOLAR, [q[1] for q, k in zip(pred, inside) if k],
+                [q[2] for q, k in zip(pred, inside) if k], color=BAND, linewidth=0, label="95 % prediction interval")
+ax.plot(ratio_grid[inside] * MASS_PER_MOLAR, [q[0] for q, k in zip(pred, inside) if k], color=BLUE, label="predicted P")
+ax.scatter([r["mass_ratio"] for r in runs], y_P, color=colour, zorder=4, s=30, label="runs (orange: different concentrate)")
+ax.scatter([best_r * MASS_PER_MOLAR], [best[0]], color=INK, zorder=5, s=70, marker="D")
+ax.annotate(f"best: ratio 5, P {best[0]:.1f}", (best_r * MASS_PER_MOLAR, best[0]), textcoords="offset points", xytext=(10, 4), color=INK)
+ax.axhline(1, color=INK_2, linewidth=1, linestyle=":")
+mass_ratio_axis(ax); ax.set_xlabel("Mg/Li ratio (mass)"); ax.set_ylabel("permselectivity P")
+ax.set_title("Predicted P: the same at every current density")
+ax.legend(loc="upper right", fontsize=7)
+ax = axes[1]
+ax.scatter([r["i"] for r in arm_i], [r["P"] for r in arm_i], color=[BLUE if r["standard"] else ORANGE for r in arm_i], zorder=3)
 for level, values in sorted(p_at_5.items()):
     ax.hlines(np.mean(values), level * 0.88, level * 1.12, color=INK, linewidth=2)
-lo, hi = numbers["best"]["P_interval"]
-ax.axhspan(lo, hi, color=BAND, linewidth=0, alpha=0.5)
-ax.axhline(y_P.mean(), color=BLUE, linewidth=1.5, label=f"chosen model: {y_P.mean():.2f} everywhere")
 ax.set_xscale("log", base=2); ax.set_xticks([3, 6, 12, 24]); ax.set_xticklabels(["3", "6", "12", "24"])
 ax.set_xlabel("current density, mA/cm² (ratio 5)"); ax.set_ylabel("permselectivity P")
-ax.set_title("P at ratio 5: runs, their averages, and the model")
-ax.legend(loc="lower right", fontsize=8)
-ax = axes[1]
+ax.set_title("P at ratio 5: runs and averages")
+ax = axes[2]
 ax.axhline(20, color=INK, linestyle="--", linewidth=1.5)
 ax.annotate("20 V: the stack's limit", (2.6, 20), textcoords="offset points", xytext=(0, 4), color=INK)
 ax.scatter([r["i"] for r in runs], [r["U_max"] for r in runs], color=colour, zorder=3)
-for r in runs:
-    if not r["standard"]:
-        ax.annotate(r["run"], (r["i"], r["U_max"]), textcoords="offset points", xytext=(6, -3), fontsize=8, color=INK_2)
 ax.set_xscale("log", base=2); ax.set_xticks([3, 6, 12, 24]); ax.set_xticklabels(["3", "6", "12", "24"])
 ax.set_ylim(0, 22)
 ax.set_xlabel("current density, mA/cm²"); ax.set_ylabel("highest stack voltage, V")
 ax.set_title("Measured highest voltage of each run")
-fig.suptitle("Looking for the most selective setup (GO-10 runs)", fontweight="bold", y=1.03)
+fig.suptitle("Finding the most selective setup (GO-10 runs)", fontweight="bold", y=1.03)
 fig.tight_layout()
 save(fig, "step8-best-setup.png")
 
