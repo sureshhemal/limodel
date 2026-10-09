@@ -21,7 +21,7 @@ See [polynomial.md](polynomial.md) for the equation itself and
 | 6. Check the chosen model | to do |
 | 7. Compare with a flexible model | planned |
 | 8. Find the best setting under the limits | to do |
-| 9. Test on runs the model has never seen | waits for AV–AY lab results |
+| 9. Test on runs the model has never seen | to do; AW is the first, once its lab results arrive |
 
 <details>
 <summary><strong>The made-up runs used in the examples</strong></summary>
@@ -822,7 +822,7 @@ output at the centre of the design.
 <details>
 <summary><strong>How</strong></summary>
 
-#### What this step starts from
+#### What Step 4 starts from
 
 | Symbol | What it is | Where it comes from |
 |---|---|---|
@@ -858,7 +858,7 @@ Variables:
 | $`v`$ | the input being coded: $`v_1`$ or $`v_2`$ | calculation: [Taking logarithms](#taking-logarithms) |
 | $`v_{\text{mid}}`$ | the middle of the input's range: becomes 0 | calculation: the second equation above |
 | $`v_{\text{half}}`$ | half the width of the range: becomes 1 | calculation: the third equation above |
-| $`v_{\min}`$, $`v_{\max}`$ | the lowest and highest values of $`v`$ among the runs being fitted | calculation: over the runs being fitted, see [What this step starts from](#what-this-step-starts-from) |
+| $`v_{\min}`$, $`v_{\max}`$ | the lowest and highest values of $`v`$ among the runs being fitted | calculation: over the runs being fitted, see [What Step 4 starts from](#what-step-4-starts-from) |
 
 The scales are fixed by the runs being fitted, so they change when runs are added: a new run beyond
 the old range moves $`v_{\min}`$ or $`v_{\max}`$, and every coded value with it.
@@ -1009,8 +1009,19 @@ significant.
 <details>
 <summary><strong>How</strong></summary>
 
-With $`x_1`$ the coded current density and $`x_2`$ the coded $`\ln R`$ (Step 4), the candidates
-are:
+#### What Step 5 starts from
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`x_1`$ | coded current density, from $`i`$ or from $`\ln i`$ | calculation: [Coding](#coding), Step 4 |
+| $`x_2`$ | coded $`\ln R`$ | calculation: [Coding](#coding), Step 4 |
+| $`y_k`$ | the measured output of run $`k`$: P, lithium recovery or highest stack voltage, one output at a time | calculation: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage) |
+| $`k`$ | one of the runs being fitted, numbered 1 to $`n`$ | the runs being fitted: [What Step 4 starts from](#what-step-4-starts-from) |
+| $`s_{\text{pe}}`$, $`\nu_{\text{pe}}`$ | the pure error and its degrees of freedom | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+
+Step 5 reads nothing new from the files.
+
+#### The candidates
 
 | Model | Equation | Coefficients, $`p`$ |
 |---|---|---|
@@ -1020,40 +1031,135 @@ are:
 | M3 | $`\hat y = b_0 + b_1 x_1 + b_2 x_2 + b_3 x_1^2`$ | 4 |
 | M4 | $`\hat y = b_0 + b_1 x_1 + b_2 x_2 + b_3 x_1^2 + b_4 x_2^2`$ | 5 |
 
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat y`$ | the output the model predicts | calculation: the equation |
+| $`b_0`$ | the intercept: the predicted output at the centre of the design, where $`x_1 = x_2 = 0`$ | fitted, below |
+| $`b_1`$, $`b_2`$ | how much the output changes from the centre to the edge of the tested range of current density and of ratio | fitted, below |
+| $`b_3`$, $`b_4`$ | the curvature in current density and in ratio: how much the trend bends | fitted, below |
+| $`x_1^2`$, $`x_2^2`$ | the coded inputs squared, which let the line bend | calculation: from $`x_1`$, $`x_2`$ |
+| $`p`$ | the number of coefficients in the model, intercept included | count |
+
 There is no $`x_1 x_2`$ term: the design cannot estimate it (Step 2). The ladder is run twice,
 once with $`x_1`$ from $`i`$ and once from $`\ln i`$ (Step 4).
 
-Each candidate is fitted by ordinary least squares. With $`X`$ the design matrix (one row per run,
-one column per term) and $`y`$ the measured outputs:
+#### Fitting by least squares
 
 $$\displaystyle b = \left(X^\top X\right)^{-1} X^\top y$$
 
-With $`n`$ runs, $`p`$ coefficients and residuals $`e_i = y_i - \hat y_i`$, the statistics are:
+Variables:
 
-$$\displaystyle SS_{\text{res}} = \sum_i e_i^2, \qquad SS_{\text{tot}} = \sum_i \left(y_i - \bar y\right)^2, \qquad s^2 = \frac{SS_{\text{res}}}{n - p}$$
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`b`$ | the model's coefficients $`b_0, b_1, \ldots`$, as one column | calculation: the equation above |
+| $`X`$ | the design matrix: one row per run $`k`$, one column per term of the model (a column of 1s for $`b_0`$, then $`x_1`$, $`x_2`$, …) | calculation: from $`x_1`$, $`x_2`$ of each run |
+| $`X^\top`$ | $`X`$ turned on its side (rows become columns) | notation |
+| $`\left(X^\top X\right)^{-1}`$ | the inverse of $`X^\top X`$, the matrix that undoes it | calculation |
+| $`y`$ | the measured outputs $`y_k`$, as one column | [What Step 5 starts from](#what-step-5-starts-from) |
+
+This is the set of coefficients that makes the sum of squared misses as small as it can be.
+
+#### How well it fits
+
+$$\displaystyle e_k = y_k - \hat y_k, \qquad SS_{\text{res}} = \sum_k e_k^2, \qquad SS_{\text{tot}} = \sum_k \left(y_k - \bar y\right)^2, \qquad s^2 = \frac{SS_{\text{res}}}{n - p}$$
 
 $$\displaystyle R^2 = 1 - \frac{SS_{\text{res}}}{SS_{\text{tot}}}, \qquad R^2_{\text{adj}} = 1 - \left(1 - R^2\right) \frac{n - 1}{n - p}$$
 
-$$\displaystyle F = \frac{\left(SS_{\text{tot}} - SS_{\text{res}}\right) / (p - 1)}{SS_{\text{res}} / (n - p)} \quad \text{compared with } F_{p-1,\,n-p}$$
+Variables:
 
-$$\displaystyle F_{\text{partial}} = \frac{\left(SS_{\text{res},a} - SS_{\text{res},b}\right) / \left(p_b - p_a\right)}{SS_{\text{res},b} / \left(n - p_b\right)} \quad \text{compared with } F_{p_b - p_a,\,n - p_b}$$
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`e_k`$ | the residual of run $`k`$: how far its measured output is from the fitted one | calculation |
+| $`\hat y_k`$ | the fitted output of run $`k`$ | calculation: the model at run $`k`$'s settings |
+| $`\sum_k`$ | add up over every run being fitted | notation |
+| $`SS_{\text{res}}`$ | the residual sum of squares: what the model leaves unexplained | calculation |
+| $`\bar y`$ | the average output over the runs being fitted | calculation |
+| $`SS_{\text{tot}}`$ | the total sum of squares: the variation there is to explain, measured from the average | calculation |
+| $`n`$ | the number of runs being fitted | count |
+| $`n - p`$ | the residual degrees of freedom: runs left over once the coefficients are fitted | calculation |
+| $`s^2`$, $`s`$ | the residual variance and its square root, the typical miss on the fitted runs | calculation |
+| $`R^2`$ | the share of the variation the model explains; the standard name of the statistic, unrelated to the feed ratio $`R`$ | calculation |
+| $`R^2_{\text{adj}}`$ | $`R^2`$ penalised for the number of coefficients, so a term that explains nothing lowers it | calculation |
 
-for a model $`b`$ against the smaller model $`a`$ one rung below it;
+#### Whether the model, and each term, earns its place
+
+$$\displaystyle F_{\text{overall}} = \frac{\left(SS_{\text{tot}} - SS_{\text{res}}\right) / (p - 1)}{SS_{\text{res}} / (n - p)} \quad \text{compared with } F_{p-1,\,n-p}$$
+
+$$\displaystyle F_{\text{partial}} = \frac{\left(SS_{\text{res,small}} - SS_{\text{res,big}}\right) / \left(p_{\text{big}} - p_{\text{small}}\right)}{SS_{\text{res,big}} / \left(n - p_{\text{big}}\right)} \quad \text{compared with } F_{p_{\text{big}} - p_{\text{small}},\,n - p_{\text{big}}}$$
 
 $$\displaystyle t_j = \frac{b_j}{\operatorname{se}(b_j)}, \qquad \operatorname{se}(b_j)^2 = s^2 \left[\left(X^\top X\right)^{-1}\right]_{jj} \quad \text{compared with } t_{n-p}$$
 
-$$\displaystyle \text{RMSE}_{\text{LOO}} = \sqrt{\frac{1}{n} \sum_i \left(y_i - \hat y_{(-i)}\right)^2}, \qquad \text{MAE}_{\text{LOO}} = \frac{1}{n} \sum_i \left|y_i - \hat y_{(-i)}\right|$$
+Variables:
 
-where $`\hat y_{(-i)}`$ is run $`i`$ predicted by the model fitted to every run except $`i`$. For
-least squares this needs no refitting: $`y_i - \hat y_{(-i)} = e_i / (1 - h_{ii})`$, with
-$`h_{ii}`$ the leverage of run $`i`$ (Step 6).
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`F_{\text{overall}}`$ | the overall F statistic: explained variation per coefficient against unexplained variation per leftover degree of freedom. Large means the model beats predicting the average | calculation: the first equation above |
+| $`F_{\text{partial}}`$ | the same comparison for one rung of the ladder: how much the added term cut the misses, against the bigger model's leftover misses | calculation: the second equation above |
+| small, big | the model one rung down the ladder, and the model being judged | the ladder |
+| $`F_{d_1,\,d_2}`$ | the F distribution with $`d_1`$ and $`d_2`$ degrees of freedom; a statistic beyond its 95th percentile has a p-value below 0.05 | statistical table |
+| $`t_j`$ | coefficient $`j`$ divided by its standard error: how many standard errors it sits from zero | calculation: the third equation above |
+| $`j`$ | one coefficient of the model: 0 for $`b_0`$, 1 for $`b_1`$, … | the model |
+| $`\operatorname{se}(b_j)`$ | the standard error of coefficient $`j`$: how much it would vary if the runs were repeated | calculation |
+| $`\left[\cdot\right]_{jj}`$ | the entry in row $`j`$, column $`j`$ of the matrix | notation |
+| $`t_{n-p}`$ | the t distribution with $`n - p`$ degrees of freedom, read for the p-value | statistical table |
 
-$$\displaystyle F_{\text{lof}} = \frac{\left(SS_{\text{res}} - SS_{\text{pe}}\right) / (m - p)}{SS_{\text{pe}} / \nu_{\text{pe}}} \quad \text{compared with } F_{m-p,\,\nu_{\text{pe}}}$$
+The F and t here are statistics, not Faraday's constant $`F`$ nor the transport numbers
+$`t_{\text{Li}}`$, $`t_{\text{Mg}}`$; their subscripts keep them apart.
 
-with $`m`$ the number of distinct settings among the fitted runs and $`SS_{\text{pe}}`$,
-$`\nu_{\text{pe}}`$ the pure error from Step 3.
+#### How well it predicts runs it has not seen
 
-R² is the standard name of that statistic; it has nothing to do with the feed ratio $`R`$.
+$$\displaystyle \text{RMSE}_{\text{LOO}} = \sqrt{\frac{1}{n} \sum_k \left(y_k - \hat y_{(-k)}\right)^2}, \qquad \text{MAE}_{\text{LOO}} = \frac{1}{n} \sum_k \left|y_k - \hat y_{(-k)}\right|, \qquad y_k - \hat y_{(-k)} = \frac{e_k}{1 - h_{kk}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat y_{(-k)}`$ | run $`k`$'s output predicted by the model fitted to every run except $`k`$ | calculation: the third equation above |
+| $`y_k - \hat y_{(-k)}`$ | the leave-one-out miss of run $`k`$ | calculation |
+| $`\text{RMSE}_{\text{LOO}}`$ | the root of the average squared miss: the typical miss on a run the model has not seen, in the output's units | calculation: the first equation above |
+| $`\text{MAE}_{\text{LOO}}`$ | the average size of the miss, ignoring its sign; less swayed by one large miss than the RMSE | calculation: the second equation above |
+| $`\lvert \cdot \rvert`$ | the size of a number, ignoring its sign | notation |
+| $`h_{kk}`$ | the leverage of run $`k`$: how far its settings sit from the others' | calculation: [Leverage](#leverage), Step 6 |
+
+The third equation is why no refitting is needed: for least squares, each leave-one-out miss follows
+from the ordinary residual and the leverage.
+
+#### Whether it misses by more than the noise
+
+$$\displaystyle F_{\text{lof}} = \frac{\left(SS_{\text{res}} - SS_{\text{pe}}\right) / \left(n_{\text{set}} - p\right)}{SS_{\text{pe}} / \nu_{\text{pe}}} \quad \text{compared with } F_{n_{\text{set}} - p,\,\nu_{\text{pe}}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`F_{\text{lof}}`$ | the lack-of-fit statistic: the misses the noise cannot account for, against the noise | calculation: the equation above |
+| $`SS_{\text{pe}}`$ | the pure-error sum of squares, the numerator of $`s_{\text{pe}}^2`$ | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+| $`SS_{\text{res}} - SS_{\text{pe}}`$ | the lack-of-fit sum of squares: the part of the misses left once the noise is taken out | calculation |
+| $`n_{\text{set}}`$ | the number of distinct settings among the runs being fitted (repeats count once) | count |
+| $`\nu_{\text{pe}}`$ | the pure error's degrees of freedom | Step 3 |
+
+#### Choosing the model
+
+The lowest leave-one-out RMSE, with every coefficient significant at the 5 % level and the
+lack-of-fit test not significant. When two candidates' leave-one-out RMSEs are within the pure error
+$`s_{\text{pe}}`$ of each other, the simpler one is taken. No candidate may use more than
+$`n - 2`$ coefficients, so that some degrees of freedom are always left to judge it with. If a
+squared term is kept, its turning point must lie outside $`[-1, 1]`$, or have a physical
+explanation:
+
+$$\displaystyle x^\ast = -\frac{b_{\text{linear}}}{2\, b_{\text{squared}}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`x^\ast`$ | the coded value at which the fitted curve turns: its peak or its trough | calculation: the equation above |
+| $`b_{\text{linear}}`$, $`b_{\text{squared}}`$ | the input's two coefficients: $`b_1`$ and $`b_3`$ for current density, $`b_2`$ and $`b_4`$ for ratio | fitted |
+| $`[-1, 1]`$ | the tested range, in coded units | Step 4 |
+
+Start with P; the same procedure then covers recovery and voltage.
 
 | Statistic | What it tells the reader |
 |---|---|
@@ -1065,20 +1171,38 @@ R² is the standard name of that statistic; it has nothing to do with the feed r
 | Leave-one-out RMSE and MAE | how far a prediction of an unseen run is likely to miss |
 | Lack-of-fit F-test | whether the model misses by more than the experiment's own noise |
 
-**Choosing the model.** The lowest leave-one-out RMSE, with every coefficient significant at the
-5 % level and the lack-of-fit test not significant. When two candidates' leave-one-out RMSEs are
-within the pure error $`s_{\text{pe}}`$ of each other, the simpler one is taken. If a squared term
-is kept, its turning point, $`x^\ast = -b_{\text{linear}} / (2\, b_{\text{squared}})`$ in coded
-units, must lie outside $`[-1, 1]`$, or have a physical explanation. No candidate may use more than
-$`n - 2`$ coefficients, so that some degrees of freedom are always left to judge it with.
-
-Start with P; the same procedure then covers recovery and voltage.
-
 **Differs from the manuscript:** the manuscript judged its models on a 75/25 split of the runs and
 4-fold cross-validation. With few runs, a quarter held out is two or three runs, and the verdict
 depends on which ones. Leave-one-out uses every run for fitting and still tests every run, so it
 is used here instead. The manuscript's reported statistics (R², RMSE, MAE, F-statistic and its
 p-value) are all included.
+
+#### Fitting the ladder, in simple terms
+
+> **The ladder is a recipe tried one ingredient at a time.** Start with the plainest guess, the
+> average of all runs (M0). Add one term and ask whether the prediction got better by more than
+> chance would give; keep climbing while each new term pays its way, and stop when it no longer
+> does. Fixing the rungs in advance stops the recipe being tuned to the runs it is judged on.
+>
+> **What each statistic asks:**
+>
+> - **R²:** what share of the ups and downs does the model explain? 0.9 means 90 %. It always
+>   goes up when a term is added, even a useless one, so it is never used alone.
+> - **Adjusted R²:** the same, with a charge for every term, so a useless term makes it fall.
+> - **F-tests:** is the improvement bigger than what chance alone would give? The overall one asks
+>   it of the whole model against the plain average; the partial one asks it of the last term
+>   added.
+> - **t-test of a coefficient:** is this term's effect clearly different from zero, or could it be
+>   zero and the fit be noise?
+> - **Leave-one-out error:** cover up one run, fit the model to the rest, predict the covered run,
+>   and note the miss; do that for every run. The typical miss is the honest answer to "how far
+>   off will a new run be?", because no run is ever predicted by a model that saw it.
+> - **Lack-of-fit test:** is the model missing by more than the experiment's own wobble (Step 3)?
+>   If it is, something real is left unexplained.
+>
+> **The rule in one sentence:** take the model that predicts unseen runs best, provided every term
+> in it is real and it misses by no more than the noise; if a simpler model does almost as well,
+> take the simpler one.
 
 </details>
 
@@ -1088,6 +1212,32 @@ p-value) are all included.
 To show: for each output, one table with a row per candidate and a column per statistic above; and
 the chosen equation with each coefficient, its standard error and p-value, written both in coded
 and in real units.
+
+#### Where the GO-10 runs stand
+
+What the GO-10 runs with lab results allow, before anything is fitted:
+
+| | With AN, AP | Without AN, AP |
+|---|---|---|
+| Runs being fitted, $`n`$ | 9 | 7 |
+| Distinct settings, $`n_{\text{set}}`$ | 7 | 6 |
+| Most coefficients allowed, $`n - 2`$ | 7: the whole ladder | 5: the whole ladder, but M4 is left with 2 degrees of freedom |
+| Current-density levels behind $`x_1^2`$ | 4 (3, 6, 12, 24) | 3 (3, 6, 12) |
+| Ratio levels behind $`x_2^2`$ | 4 (5, 10, 20, 40) | 4 (5, 10, 20, 40) |
+| t value a coefficient of M3 must beat, $`t_{0.975,\,n-4}`$ | 2.57 | 3.18 |
+
+- **The lack-of-fit test is nearly powerless for now.** The only GO-10 repeats in the data files are
+  AH and AI, so $`\nu_{\text{pe}} = 1`$, and the test compares against $`F_{n_{\text{set}} - p,\,1}`$,
+  whose 95th percentile is 160 to 230: a model would have to miss by more than a hundred times the
+  noise to fail it. With BD and BE from the workbook, $`\nu_{\text{pe}} = 3`$ and the threshold falls
+  to about 9 or 10, and the test starts to mean something.
+- **AN and AP sit at the same setting but are not repeats** (their concentrate started
+  differently). If both are fitted, their difference counts as lack of fit, though part of it is
+  the concentrate's effect rather than the model's.
+- **Without AN and AP**, the curvature in current density rests on three levels, and the lowest,
+  3 mA/cm², is a single run, AJ. A model with $`x_1^2`$ then passes exactly through AJ, and its
+  leave-one-out miss cannot be worked out (Step 6, [Where the GO-10 runs stand on leverage](#where-the-go-10-runs-stand-on-leverage)),
+  so M3 and M4 cannot be judged by leave-one-out error on those seven runs.
 
 #### Example with made-up runs
 
@@ -1147,7 +1297,8 @@ decides the result; and produce the figure that shows how well the surrogate per
 <summary><strong>Why</strong></summary>
 
 The statistics of Step 5 (F, t, p-values) and the intervals of Step 8 assume errors that are
-independent, equally spread at every level, and roughly normal. If the residuals show a pattern,
+independent (no drift from one run to the next, as a membrane ages), equally spread at every
+level, and roughly normal. If the residuals show a pattern,
 a term is missing and those numbers are wrong. With few runs, one unusual run can also pull the
 whole surface towards itself. And the predicted-against-measured plot is how the reviewers judge
 whether the surrogate is good enough.
@@ -1157,58 +1308,269 @@ whether the surrogate is good enough.
 <details>
 <summary><strong>How</strong></summary>
 
-- **Parity plot.** Measured $`y_i`$ against the leave-one-out prediction $`\hat y_{(-i)}`$, with
-  the line $`y = \hat y`$ and a band of $`\pm 2\,s_{\text{pe}}`$ around it. Points inside the band
-  are predicted as well as the experiment repeats.
-- **Residual plots.** $`e_i`$ against $`\hat y_i`$ and against each input. They should scatter
-  evenly around zero. A curve means a missing term; a funnel, spread growing with the level, means
-  the output should be modelled on a log scale. P is a ratio, positive and with a spread that
-  tends to grow with its size, so $`\ln P`$ is the first alternative to try.
-- **Normal Q–Q plot** of the residuals: roughly a straight line. With few points, only gross
-  departures can be read from it.
-- **Leverage.** How far a run's settings sit from the others:
+#### What Step 6 starts from
 
-$$\displaystyle h_{ii} = \left[X \left(X^\top X\right)^{-1} X^\top\right]_{ii}$$
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| the chosen model | one equation per output, with its $`p`$ coefficients $`b_j`$ | [Choosing the model](#choosing-the-model), Step 5 |
+| $`X`$ | the chosen model's design matrix | calculation: [Fitting by least squares](#fitting-by-least-squares), Step 5 |
+| $`y_k`$, $`\hat y_k`$, $`e_k`$ | run $`k`$'s measured output, fitted output and residual | calculation: [How well it fits](#how-well-it-fits), Step 5 |
+| $`\hat y_{(-k)}`$ | run $`k`$'s output predicted with run $`k`$ left out | calculation: [How well it predicts runs it has not seen](#how-well-it-predicts-runs-it-has-not-seen), Step 5 |
+| $`s^2`$, $`s`$, $`n`$, $`p`$, $`\operatorname{se}(b_j)`$ | the residual variance and the typical miss, the number of runs and of coefficients, a coefficient's standard error | calculation: Step 5 |
+| $`s_{\text{pe}}`$ | the pure error | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+| the date of each run | the day the run was done, to put the runs in order | CSV: `runs.csv` → `run_date`<br>Model: `Run.run_date` |
 
-  Its average is $`p/n`$; runs above $`2p/n`$ are flagged. In a cross-shaped design the end of
-  each arm has high leverage by construction, which is expected, but those runs deserve the most
-  checking.
-- **Cook's distance.** How much all the fitted values move when run $`i`$ is left out:
+Step 6 reads one new column, the run date; everything else comes from Steps 3 and 5.
 
-$$\displaystyle D_i = \frac{e_i^2}{p\,s^2} \cdot \frac{h_{ii}}{\left(1 - h_{ii}\right)^2}$$
+#### Parity plot
 
-  Runs above $`4/n`$ are flagged; above 1 is serious.
-- **Flagged runs.** Each is refitted without, and the change in the coefficients and in the
-  recommendation (Step 8) is reported. No run is dropped without a reason from the lab.
+Measured $`y_k`$ against the leave-one-out prediction $`\hat y_{(-k)}`$, with the line where they
+are equal and a band around it:
+
+$$\displaystyle y = \hat y \pm 2\, s_{\text{pe}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`y = \hat y`$ | the line of perfect prediction | notation |
+| $`2\, s_{\text{pe}}`$ | the half-width of the band: a run measured again lands within about two pure errors of its true value 19 times in 20 | calculation: from $`s_{\text{pe}}`$ |
+
+Points inside the band are predicted about as well as the experiment repeats itself. The
+leave-one-out prediction is plotted rather than the fitted value, because a fitted value has
+already seen the run it is compared with.
+
+#### Standardised residuals
+
+Residuals at the edge of the design are smaller than in the middle, because the fit is pulled
+towards runs with high leverage. Dividing each residual by its own standard deviation puts them
+all on one scale:
+
+$$\displaystyle r_k = \frac{e_k}{s \sqrt{1 - h_{kk}}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`r_k`$ | the standardised residual of run $`k`$: its residual in units of its own standard deviation | calculation: the equation above |
+| $`e_k`$, $`s`$ | the residual and the typical miss | Step 5 |
+| $`h_{kk}`$ | the leverage of run $`k`$ | calculation: [Leverage](#leverage) |
+
+If the errors are normal, about 1 run in 20 has $`\lvert r_k \rvert`$ above 2; such runs are
+flagged, and checked with the lab.
+
+#### Residual plots
+
+$`r_k`$ against $`\hat y_k`$, against each input $`x_1`$ and $`x_2`$, and against the run date.
+Each should scatter evenly around zero:
+
+| Pattern | What it means | What is done |
+|---|---|---|
+| a curve against $`\hat y_k`$ or an input | a term is missing | the next rung of the ladder is reconsidered (Step 5) |
+| a funnel: the spread grows with $`\hat y_k`$ | the noise grows with the output's size | the output is modelled on a log scale (below) |
+| a trend against the run date | the runs drift with time, for example as membranes age | reported to the lab; the date cannot be added as an input with so few runs |
+
+#### If the residuals show a funnel
+
+P is a ratio: always positive, and its scatter tends to grow with its size. If the residual plot
+shows a funnel, the ladder of Step 5 is refitted with $`\ln P`$ as the output, and each prediction
+is turned back into P:
+
+$$\displaystyle \hat P = e^{\widehat{\ln P}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\widehat{\ln P}`$ | the logarithm of P as the refitted model predicts it | calculation: the Step 5 ladder, fitted to $`\ln P`$ |
+| $`\hat P`$ | that prediction turned back into P | calculation: the equation above |
+
+The two versions are then compared by their leave-one-out error worked out in P, so that both are
+judged in the same units, and the lower one is kept.
+
+#### Normal Q–Q plot
+
+The standardised residuals, sorted from lowest to highest, against the values a normal sample of
+the same size would be expected to have:
+
+$$\displaystyle z_k = \Phi^{-1}\!\left(\frac{\text{rank}_k - 0.5}{n}\right)$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`z_k`$ | the value run $`k`$'s residual would be expected to have if the errors were normal | calculation: the equation above |
+| $`\text{rank}_k`$ | the place of $`r_k`$ when the residuals are sorted: 1 for the lowest, $`n`$ for the highest | calculation: from $`r_k`$ |
+| $`\Phi^{-1}`$ | the inverse of the standard normal distribution: the value below which a given share of a normal population lies. $`\Phi^{-1}(0.5) = 0`$, $`\Phi^{-1}(0.975) = 1.96`$ | statistical table |
+
+The points should lie close to the line $`r = z`$. The Shapiro–Wilk test is reported beside the
+plot, a p-value below 0.05 meaning the residuals are unlikely to be normal. With fewer than about
+ten runs, the plot and the test can show only gross departures, such as one run far off the line.
+
+#### Leverage
+
+How far a run's settings sit from the others', and so how strongly the fit is pulled towards it:
+
+$$\displaystyle h_{kk} = \left[X \left(X^\top X\right)^{-1} X^\top\right]_{kk}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`h_{kk}`$ | the leverage of run $`k`$: the share of its own fitted value that comes from its own measurement, between 0 and 1 | calculation: the equation above |
+| $`X`$, $`X^\top`$, $`\left(X^\top X\right)^{-1}`$ | as in [Fitting by least squares](#fitting-by-least-squares) | Step 5 |
+| $`\left[\cdot\right]_{kk}`$ | the entry in row $`k`$, column $`k`$ of the matrix | notation |
+| $`p/n`$ | the average leverage: the leverages always add up to $`p`$ | calculation |
+
+Leverage depends only on the settings, not on the outputs, so it can be worked out before any run
+is measured. Runs above $`2p/n`$ are flagged. When $`2p/n`$ is 1 or more, that rule can flag
+nothing, and runs above 0.5 are flagged instead: more than half of their fitted value is their own
+measurement. A run with $`h_{kk} = 1`$ is fitted exactly whatever it measured, so it cannot be
+checked at all: its residual is zero, and its leave-one-out miss and Cook's distance cannot be
+worked out. In a cross-shaped design the end of each arm has high leverage by construction; those
+runs are expected to be flagged, and deserve the most checking.
+
+#### Cook's distance
+
+How much all the fitted values move when run $`k`$ is left out:
+
+$$\displaystyle D_k = \frac{e_k^2}{p\, s^2} \cdot \frac{h_{kk}}{\left(1 - h_{kk}\right)^2}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`D_k`$ | Cook's distance of run $`k`$: its influence on the whole fit | calculation: the equation above |
+| $`e_k^2 / (p\, s^2)`$ | how badly run $`k`$ is fitted | calculation |
+| $`h_{kk} / \left(1 - h_{kk}\right)^2`$ | how much pull run $`k`$ has | calculation |
+| $`4/n`$, 1 | the levels above which a run is flagged, and above which it is serious | rules of thumb |
+
+A run needs both a large miss and a large pull to have a large $`D_k`$.
+
+#### Refitting without a flagged run
+
+Each flagged run is left out, the chosen model refitted with the coding kept as it was, and each
+coefficient's change measured against its own standard error:
+
+$$\displaystyle \Delta_{jk} = \frac{b_j - b_{j(-k)}}{\operatorname{se}(b_j)}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\Delta_{jk}`$ | how far coefficient $`j`$ moves when run $`k`$ is left out, in standard errors | calculation: the equation above |
+| $`b_j`$, $`\operatorname{se}(b_j)`$ | coefficient $`j`$ with every run, and its standard error | Step 5 |
+| $`b_{j(-k)}`$ | coefficient $`j`$ refitted without run $`k`$ | calculation: [Fitting by least squares](#fitting-by-least-squares), without run $`k`$ |
+
+A shift of more than one standard error means that run, more than the others, decides that
+coefficient. The change in the recommended setting (Step 8) is reported too. No run is dropped
+without a reason from the lab: an unusual result is a question for the lab, not a reason to delete
+a run.
+
+#### Checking the model, in simple terms
+
+> **The residuals are what the model could not explain.** If the model has caught everything real,
+> what is left should look like the experiment's own wobble: no pattern, about the same size
+> everywhere.
+>
+> - **Parity plot:** each run's measured value against what the model predicted *without having
+>   seen that run*. The closer to the diagonal, the better; inside the band means as close as a
+>   repeat run would be.
+> - **Residual plots:** the misses, plotted against everything that might explain them. A smile or
+>   a frown means a bend the model lacks; a fan opening out means the noise grows with the value;
+>   a slope against the date means something changed over time.
+> - **Q–Q plot:** are the misses shaped like ordinary random noise, mostly small with a few larger
+>   ones? Then the points sit on a straight line.
+>
+> **Leverage and influence: is one run doing all the work?** A seesaw with one child far out at the
+> end: that child decides which way it tips. A run at an extreme setting, alone there, is that
+> child. Leverage says how far out a run sits; Cook's distance says whether it is actually tipping
+> the result. A run far out that agrees with the others is harmless; a run far out that disagrees
+> moves everything.
+>
+> **The test of a worrying run:** fit again without it. If the answer barely moves, the model does
+> not depend on it. If it moves by more than its own uncertainty, that one run is carrying the
+> conclusion, and it is checked with the lab, or repeated.
 
 </details>
 
 <details>
 <summary><strong>Results</strong></summary>
 
-To show: the parity plot and residual plots for each output, and a table of leverage and Cook's
-distance with the flagged runs and the effect of refitting without them.
+To show: for each output, the parity plot, the residual plots and the Q–Q plot with its
+Shapiro–Wilk p-value; and a table of each run's leverage, standardised residual and Cook's
+distance, with the flagged runs and the coefficient shifts when each is left out.
+
+#### Where the GO-10 runs stand on leverage
+
+Leverage depends only on the settings, so it can be worked out for the GO-10 runs before any
+model is fitted. With $`x_1`$ from $`\ln i`$, coded as in Step 4:
+
+| Run | Setting | M3, with AN, AP | M3, without AN, AP | M4, with AN, AP |
+|---|---|---|---|---|
+| AJ | 3 mA/cm², ratio 5 | **0.92** | **1.00** | **0.93** |
+| AH | 6 mA/cm², ratio 5 | 0.32 | 0.50 | 0.35 |
+| AI | 6 mA/cm², ratio 5 | 0.32 | 0.50 | 0.35 |
+| AE | 12 mA/cm², ratio 5 | 0.34 | **0.70** | 0.39 |
+| AF | 12 mA/cm², ratio 10 | 0.18 | 0.30 | **0.54** |
+| AG | 12 mA/cm², ratio 20 | 0.29 | 0.30 | **0.54** |
+| AT | 12 mA/cm², ratio 40 | 0.67 | **0.70** | **0.95** |
+| AN | 24 mA/cm², ratio 5 | 0.48 | | 0.48 |
+| AP | 24 mA/cm², ratio 5 | 0.48 | | 0.48 |
+| Flagged above | | $`2p/n`$ = 0.89 | 0.5, since $`2p/n`$ = 1.14 | 0.5, since $`2p/n`$ = 1.11 |
+
+- **Without AN and AP, AJ cannot be checked under M3 or M4.** Its leverage is 1 (to within
+  0.000003): AJ is the only run at 3 mA/cm², and left out, it leaves two current-density levels,
+  from which no curve can be estimated. So any model with $`x_1^2`$ passes exactly through AJ
+  whatever it measured, and AJ's leave-one-out miss and Cook's distance cannot be worked out. The
+  same holds with $`x_1`$ from $`i`$. Step 5's leave-one-out error therefore cannot judge M3 or M4
+  on these seven runs.
+- **With AN and AP, AJ still carries the low end of the curve** (0.92 under M3): its leave-one-out
+  miss is its residual multiplied by about 12.
+- **AT, the only run at ratio 40, carries the high end of the ratio arm**, and under M4 (0.95) it
+  would decide the ratio's curvature almost alone.
+- **What would ease it:** a repeat of AJ's setting, which would also add to the pure error; and the
+  results of AW (ratio 60), which would give the ratio arm a second run beyond ratio 20.
+- **Residuals, the Q–Q plot and Cook's distances** wait for Step 5 to choose the models.
 
 #### Example with made-up runs
 
-![Parity, residuals and influence for the chosen P model](figures/plan/step6-checks.png)
+![Parity, residuals, Q–Q and influence for the chosen P model](figures/plan/step6-checks.png)
+
+The chosen model for P is M3, with $`x_1`$ from $`\ln i`$ (Step 5).
+
+| Run | M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8 | M9 | M10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Leverage $`h_{kk}`$ | **0.89** | 0.25 | 0.25 | 0.21 | 0.21 | 0.21 | **0.89** | 0.14 | 0.29 | 0.66 |
+| Standardised residual $`r_k`$ | −0.41 | −0.40 | 0.87 | −1.74 | 1.13 | 0.90 | 0.41 | −0.76 | −0.70 | 1.07 |
+| Cook's distance $`D_k`$ | 0.34 | 0.01 | 0.06 | 0.20 | 0.08 | 0.05 | 0.34 | 0.02 | 0.05 | **0.56** |
+
+Flagged above $`2p/n`$ = 0.8 for leverage and $`4/n`$ = 0.4 for Cook's distance.
 
 Reading them:
 
 - **Parity:** every run's leave-one-out prediction lies inside the band of ±2 pure errors.
-- **Residuals:** scattered around zero with no curve and no funnel: no missing term, no need for
-  $`\ln P`$.
-- **Leverage:** M1 and M7 have $`h_{ii}`$ = 0.89, above $`2p/n`$ = 0.8. They are the two ends of
-  the current-density arm, high by construction.
-- **Cook's distance:** M10, the end of the ratio arm, is 0.56, above $`4/n`$ = 0.4. Refitted
-  without it, the ratio coefficient moves from −1.12 to −1.29, while the others barely move
-  (4.36 → 4.22, −1.82 → −1.81, −1.68 → −1.71). So M10 largely decides how fast P falls with
-  magnesium: it is the run to check first with the lab, and the reason to run another high ratio.
+- **Residuals:** scattered around zero with no curve and no funnel, and none beyond ±2 (the largest
+  is M4, −1.74): no missing term, no need for $`\ln P`$.
+- **Q–Q:** the points lie close to the line; Shapiro–Wilk p = 0.57, so nothing suggests the errors
+  are not normal (with ten runs, only a gross departure would show).
+- **Leverage:** M1 and M7 are flagged. They are the two ends of the current-density arm, high by
+  construction.
+- **Cook's distance:** M10, the end of the ratio arm, is flagged.
 
-| Run | M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8 | M9 | M10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Leverage $`h_{ii}`$ | **0.89** | 0.25 | 0.25 | 0.21 | 0.21 | 0.21 | **0.89** | 0.14 | 0.29 | 0.66 |
-| Cook's distance $`D_i`$ | 0.34 | 0.01 | 0.06 | 0.20 | 0.08 | 0.05 | 0.34 | 0.02 | 0.05 | **0.56** |
+Refitting without each flagged run, the size of each coefficient's shift $`\lvert \Delta_{jk} \rvert`$, in standard errors:
+
+| Left out | $`b_0`$ | $`b_1`$, on $`x_1`$ | $`b_2`$, on $`x_2`$ | $`b_3`$, on $`x_1^2`$ |
+|---|---|---|---|---|
+| M1 | 0.10 | 0.78 | 0.15 | 0.70 |
+| M7 | 0.41 | 0.78 | 0.15 | 0.80 |
+| M10 | **1.14** | 0.08 | **1.33** | 0.11 |
+
+- **M1 and M7**, despite their leverage, move no coefficient by a full standard error: they sit far
+  out but agree with the others.
+- **M10** moves the ratio coefficient from −1.12 to −1.29 (1.33 standard errors) and the intercept
+  from 4.36 to 4.22. So M10 largely decides how fast P falls with magnesium: it is the run to check
+  first with the lab, and the reason to run another high ratio.
 
 </details>
 
@@ -1235,40 +1597,201 @@ something. The manuscript makes the same comparison.
 <details>
 <summary><strong>How</strong></summary>
 
-Gradient-boosted trees (XGBoost, set up as in the manuscript: 100 trees, depth at most 2), on the
-same inputs and outputs. Trees split on thresholds, so they need no coding. Leave-one-out as in
-Step 5: fit to every run but one, predict that one, repeat for each run. The model's
-$`\text{RMSE}_{\text{LOO}}`$ and $`\text{MAE}_{\text{LOO}}`$ are set beside the chosen
-polynomial's and beside $`s_{\text{pe}}`$.
+#### What Step 7 starts from
 
-Read with care: trees predict in steps and cannot predict beyond the most extreme runs they were
-given, and with few runs each final branch holds only one or two. So the flexible model is a check
-on the polynomial, never the basis of a recommendation.
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`i`$, $`R`$ | the two inputs, in their own units: trees need neither logarithms nor coding (below) | calculation: [Current density](#current-density), [Feed ratio](#feed-ratio) |
+| $`y_k`$, $`k`$, $`n`$ | the measured output of run $`k`$, and the number of runs being fitted | [What Step 5 starts from](#what-step-5-starts-from) |
+| $`\hat y_{(-k)}`$ of the polynomial, $`\text{RMSE}_{\text{LOO}}`$, $`\text{MAE}_{\text{LOO}}`$, $`SS_{\text{tot}}`$ | the chosen polynomial's leave-one-out predictions and errors, and the variation there is to explain | calculation: [How well it predicts runs it has not seen](#how-well-it-predicts-runs-it-has-not-seen), [How well it fits](#how-well-it-fits), Step 5 |
+| $`s_{\text{pe}}`$ | the pure error | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+
+Step 7 reads nothing new from the files.
+
+#### One tree
+
+A regression tree asks a few yes-or-no questions about the inputs, such as "is $`i`$ below 9?",
+and each combination of answers leads to a leaf with one value:
+
+$$\displaystyle f(i, R) = w_\ell \quad \text{when } (i, R) \text{ falls in leaf } \ell$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`f`$ | one tree: a rule that turns a setting into a number | calculation: grown as below |
+| $`\ell`$ | one leaf of the tree: a rectangle of settings, bounded by the thresholds of the questions above it | the tree |
+| $`w_\ell`$ | the value the tree gives every setting in leaf $`\ell`$ | calculation: [Growing the trees](#growing-the-trees) |
+
+A tree of depth 2 asks at most two questions in a row, so it has at most four leaves. Its
+prediction is flat inside each leaf and jumps at each threshold.
+
+#### Boosting: adding trees one at a time
+
+$$\displaystyle \hat y^{(0)} = \bar y, \qquad \hat y^{(m)} = \hat y^{(m-1)} + \eta\, f_m(i, R), \qquad m = 1, 2, \ldots, M$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat y^{(m)}`$ | the prediction after $`m`$ trees; $`\hat y^{(M)}`$ is the model's prediction | calculation: the equation above |
+| $`\bar y`$ | the starting prediction: the average output of the runs it learns from | calculation |
+| $`f_m`$ | tree number $`m`$, grown to predict what the first $`m - 1`$ trees still miss, $`y_k - \hat y^{(m-1)}_k`$ | calculation: [Growing the trees](#growing-the-trees) |
+| $`\eta`$ | the learning rate: the share of each tree's correction that is kept | setting, below |
+| $`M`$ | the number of trees | setting, below |
+
+Each tree corrects part of what the trees before it left over, so the prediction is built up in
+many small steps.
+
+#### Growing the trees
+
+Each question is the threshold that most reduces the squared misses, and each leaf's value is the
+average leftover miss of its runs, pulled towards zero:
+
+$$\displaystyle w_\ell = \frac{S_\ell}{n_\ell + \lambda}, \qquad S_\ell = \sum_{k \in \ell} \left(y_k - \hat y^{(m-1)}_k\right)$$
+
+$$\displaystyle \text{gain} = \frac{1}{2} \left[\frac{S_{\text{left}}^2}{n_{\text{left}} + \lambda} + \frac{S_{\text{right}}^2}{n_{\text{right}} + \lambda} - \frac{\left(S_{\text{left}} + S_{\text{right}}\right)^2}{n_{\text{left}} + n_{\text{right}} + \lambda}\right] - \gamma$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`S_\ell`$ | the sum of the leftover misses of the runs in leaf $`\ell`$ | calculation: the first line above |
+| $`k \in \ell`$ | the runs whose settings fall in leaf $`\ell`$ | the tree |
+| $`n_\ell`$ | the number of runs in leaf $`\ell`$ | count |
+| $`\lambda`$ | the shrinkage of each leaf value towards zero, so a leaf holding one run does not copy it in full | setting, below |
+| gain | how much a candidate question reduces the squared misses; the question with the largest gain is asked, and none is asked if no gain is positive | calculation: the second line above |
+| left, right | the runs on either side of a candidate threshold: below it and above it | the candidate question |
+| $`\gamma`$ | the least gain a question must bring to be asked | setting, below |
+
+The settings, as in the manuscript, with XGBoost's own values for the ones the manuscript does not
+state:
+
+| Setting | Value | Source |
+|---|---|---|
+| Number of trees, $`M`$ | 100 | manuscript |
+| Depth of each tree | at most 2 | manuscript |
+| Learning rate, $`\eta`$ | 0.3 | XGBoost's default |
+| Leaf shrinkage, $`\lambda`$ | 1 | XGBoost's default |
+| Least gain, $`\gamma`$ | 0 | XGBoost's default |
+| Fewest runs in a leaf | 1 | XGBoost's default |
+| Starting prediction, $`\hat y^{(0)}`$ | the average output | XGBoost's default since version 2.0 |
+
+Nothing is tuned: tuning the settings on the same few runs that judge the model would flatter it.
+
+**No logarithms, no coding.** A tree only asks whether a value is above or below a threshold, so
+any change of scale that keeps the order of the values, such as $`i`$ against $`\ln i`$, coded or not, gives the
+same questions and the same predictions.
+
+#### Judging it the same way
+
+Leave-one-out as in Step 5, but by refitting: the trees are grown on every run but $`k`$, run
+$`k`$ is predicted, and this is repeated for every run. The leverage shortcut of Step 5 holds only
+for least squares. Then $`\text{RMSE}_{\text{LOO}}`$ and $`\text{MAE}_{\text{LOO}}`$ as in Step 5,
+and the cross-validated R² that the manuscript reports:
+
+$$\displaystyle Q^2 = 1 - \frac{\sum_k \left(y_k - \hat y_{(-k)}\right)^2}{SS_{\text{tot}}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`Q^2`$ | the share of the variation the model predicts on runs it has not seen. 1 is perfect, 0 is no better than predicting the average, and below 0 is worse than that | calculation: the equation above |
+| $`\hat y_{(-k)}`$ | run $`k`$'s output predicted by the model fitted without it: for the trees, by refitting; for the polynomial, as in Step 5 | calculation |
+| $`SS_{\text{tot}}`$ | the variation there is to explain | [How well it fits](#how-well-it-fits), Step 5 |
+
+$`Q^2`$ is worked out for the polynomial too, so the two are compared on the same three numbers.
+
+#### The rule, fixed in advance
+
+| Result | What it means | What is done |
+|---|---|---|
+| The trees' $`\text{RMSE}_{\text{LOO}}`$ is not lower than the polynomial's by more than $`s_{\text{pe}}`$ | the polynomial has captured what the runs contain | the polynomial stands |
+| It is lower by more than $`s_{\text{pe}}`$ | the polynomial misses a shape the runs contain | the runs the trees predict much better show where; back to the residual plots (Step 6) and the ladder (Step 5) |
+
+Either way, the trees are a check on the polynomial, never the basis of a recommendation. They
+predict in steps, so their optimum is a whole leaf rather than a point; and their prediction for a
+run at the edge of the design, left out, is the value of the nearest runs still in, because a tree
+cannot predict beyond the runs it was grown on.
 
 **Differs from the manuscript:** the manuscript compared the two models on a 75/25 split and
-4-fold cross-validation; here, leave-one-out, as in Step 5.
+4-fold cross-validation; here, leave-one-out, as in Step 5. The manuscript's statistics, R² on
+unseen runs, that is $`Q^2`$, RMSE and MAE, are all reported.
+
+#### The flexible model, in simple terms
+
+> **One tree is a game of twenty questions, cut down to two.** "Is the current density below 9?
+> Is the ratio below 15?" Two answers put a setting in one of four boxes, and every setting in a
+> box gets the same prediction, the average of the runs in it.
+>
+> **Boosting is a team of a hundred such players, taking turns.** The first predicts the average.
+> Each next one looks only at what the team still gets wrong and corrects a part of it (30 %),
+> never the whole, so that no single player can chase one odd run. Together they can follow
+> almost any shape, with no equation chosen in advance.
+>
+> **Why compare with it?** If this free-form team cannot predict unseen runs better than the
+> simple curve, the curve has found everything the runs can tell. If it can, the curve is missing
+> something, and the runs it predicts better show where.
+>
+> **Its weakness:** every prediction is an average of runs it has seen, so beyond the last run it
+> can only repeat that run. Asked about a setting past the end of the tested range, it answers
+> with the edge value, however the trend was heading.
 
 </details>
 
 <details>
 <summary><strong>Results</strong></summary>
 
-To show: for each output, the leave-one-out RMSE and MAE of the polynomial and the flexible model
-side by side, with $`s_{\text{pe}}`$, and both models' parity plots.
+To show: for each output, the leave-one-out RMSE, MAE and $`Q^2`$ of the polynomial and of the
+boosted trees side by side, with $`s_{\text{pe}}`$; each model's leave-one-out prediction of every
+run; and both models' parity plots.
+
+#### Where the GO-10 runs stand against the trees
+
+What the GO-10 settings already say, before any output is used:
+
+- **Two runs will be predicted by flat extrapolation.** Left out, AJ (the only run at 3 mA/cm²)
+  lies below every other current density, and AT (the only run at ratio 40) above every other
+  ratio. The trees can only give them the value of the nearest runs still in (6 mA/cm² and ratio
+  20), so their leave-one-out misses measure that, not the trees' skill. This holds with or
+  without AN and AP. AN and AE also sit just beyond the others when left out, but only by
+  0.05 and 0.01 mA/cm², which changes nothing.
+- **Each fit learns from 8 runs (or 6 without AN and AP).** A depth-2 tree has up to four leaves,
+  so many leaves hold one or two runs, and the leaf shrinkage $`\lambda`$ = 1 halves a one-run
+  leaf.
+- **The manuscript's own comparison** (GO-10, Na/Li brines) found the same order: cross-validated
+  R² of 0.68 for the polynomial and −0.21 for XGBoost, worse than predicting the average.
 
 #### Example with made-up runs
 
-![Leave-one-out error of the polynomial and of boosted trees, against the pure error](figures/plan/step7-comparison.png)
+![Leave-one-out error of the polynomial and of boosted trees, and both models along the current-density arm](figures/plan/step7-comparison.png)
 
-| Model | LOO RMSE | LOO MAE |
-|---|---|---|
-| Polynomial (M3) | 0.31 | 0.29 |
-| Boosted trees | 0.98 | 0.69 |
-| Pure error, for comparison | 0.31 | |
+| Model | LOO RMSE | LOO MAE | $`Q^2`$ |
+|---|---|---|---|
+| Polynomial (M3) | 0.31 | 0.29 | 0.95 |
+| Boosted trees | 0.98 | 0.69 | 0.46 |
+| Pure error, for comparison | 0.31 | | |
 
-The polynomial predicts unseen runs as well as the experiment repeats; the trees miss by three
-times as much. With nine runs to learn from each time, the trees predict in steps and cannot reach
-the ends of the arms. The polynomial has captured what the made-up data contains.
+Each run predicted with itself left out:
+
+| Run | M1 | M2 | M3 | M4 | M5 | M6 | M7 | M8 | M9 | M10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Measured P | 5.59 | 5.82 | 6.09 | 4.31 | 4.94 | 4.89 | 2.02 | 3.77 | 3.05 | 2.60 |
+| Polynomial | 5.90 | 5.93 | 5.84 | 4.79 | 4.63 | 4.64 | 1.71 | 3.97 | 3.25 | 2.15 |
+| Boosted trees | 5.96 | 6.09 | 5.82 | 4.91 | 4.60 | 4.62 | **4.71** | 4.71 | 3.77 | **3.05** |
+
+Reading them:
+
+- **The rule:** the trees' leave-one-out RMSE is higher than the polynomial's, not lower, so the
+  polynomial stands.
+- **The trees' biggest misses are the ends of the arms.** M7, at 24 mA/cm², is predicted 4.71
+  (measured 2.02), the value of the 12 mA/cm² runs: left out, nothing beyond 12 remains. M10, at
+  ratio 40, is predicted 3.05, the value of M9 at ratio 20. The polynomial follows the trend past
+  the last run still in and misses them by 0.31 and 0.45.
+- **In the middle of the design the two agree** (M2 to M6), within the pure error.
+- **The right panel shows why:** fitted to all ten runs, the trees give a staircase, flat beyond
+  24 mA/cm², while the polynomial gives a smooth curve with its peak near 5 mA/cm², as the
+  made-up truth has.
 
 </details>
 
@@ -1295,65 +1818,199 @@ current.
 <details>
 <summary><strong>How</strong></summary>
 
-For each ratio $`R`$ in its tested range:
+#### What Step 8 starts from
 
-$$\displaystyle \max_{i}\; \hat P(i, R) \quad \text{subject to} \quad \widehat{\text{recovery}}(i, R) \ge 35\ \%, \qquad \hat U_{\max}(i, R) \le 20\ \text{V}$$
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat P`$, $`\widehat{\text{recovery}}`$, $`\hat U_{\max}`$ | the chosen equation for each output, in coded units | [Choosing the model](#choosing-the-model), Step 5 |
+| $`n`$, $`p`$, $`s`$, $`\left(X^\top X\right)^{-1}`$ | for each output's chosen model: the runs, the coefficients, the typical miss and the matrix from the fit | calculation: [Fitting by least squares](#fitting-by-least-squares), [How well it fits](#how-well-it-fits), Step 5 |
+| $`v_{\text{mid}}`$, $`v_{\text{half}}`$, $`v_{\min}`$, $`v_{\max}`$ | the coding of each input, and the lowest and highest tested values | calculation: [Coding](#coding), Step 4 |
+| $`s_{\text{pe}}`$ | the pure error of P | calculation: [Pooling the scatter](#pooling-the-scatter), Step 3 |
+| $`Q`$, $`A`$ | the charge each run passed, and the membrane area per cell pair | calculation: [building blocks](#building-blocks), Step 1<br>CSV: `runs.csv` → `area_cm2`<br>Model: `Run.area_cm2` |
 
-The three chosen equations are evaluated on a fine grid of current densities (every
-0.1 mA/cm²) inside the tested range only: a polynomial is not to be trusted beyond the runs it
-was fitted to.
+Step 8 reads nothing new from the files.
 
-Every prediction carries a 95 % prediction interval for a new run:
+#### The question, as an equation
 
-$$\displaystyle \hat y_0 \pm t_{0.975,\,n-p}\; s \sqrt{1 + x_0^\top \left(X^\top X\right)^{-1} x_0}$$
+For each feed ratio $`R`$:
 
-with $`x_0`$ the coded setting. The gates are applied twice: to the predicted values, and
-cautiously, to the lower end of the recovery interval and the upper end of the voltage interval.
-Both answers are reported; the cautious one is the safer recommendation.
+$$\displaystyle \max_{i}\; \hat P(i, R) \quad \text{subject to} \quad \widehat{\text{recovery}}(i, R) \ge 35\ \%, \qquad \hat U_{\max}(i, R) \le 20\ \text{V}, \qquad i_{\min} \le i \le i_{\max}$$
 
-Three conditions are stated with every recommendation:
+Variables:
 
-- **Run length comes with it.** The tested runs passed the same charge per area, so each current
-  density was tested with one run length. A recommended current density is a recommendation for
-  that current *and* that run length.
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\max_{i}`$ | the current density that makes what follows as large as it can be | notation |
+| $`\hat P(i, R)`$, $`\widehat{\text{recovery}}(i, R)`$, $`\hat U_{\max}(i, R)`$ | each chosen equation, evaluated at the setting $`(i, R)`$: coded by Step 4, the prediction turned back into real units | calculation |
+| 35 % | the recovery floor: below it, most of the lithium stays in the diluate. Provisional, so the answer is also shown at 30 % and 40 % | the project's choice |
+| 20 V | the voltage ceiling: the most the stack can hold; above it the membranes break | the lab |
+| $`i_{\min}`$, $`i_{\max}`$ | the lowest and highest tested current densities: a polynomial is not to be trusted beyond the runs it was fitted to | Step 4: $`v_{\min}`$, $`v_{\max}`$ |
+
+The answer is one current density per ratio, because a brine's ratio is set by nature, not chosen.
+The ratios searched are the tested ones, and the recommended current is also plotted against the
+ratio over the whole tested range.
+
+The current densities are searched on a grid, every 0.1 mA/cm² from $`i_{\min}`$ to
+$`i_{\max}`$: with one input to search, a grid finds the best value without the risk of a search
+method stopping at the wrong place.
+
+#### The uncertainty of each prediction
+
+Every prediction carries a 95 % prediction interval: the range a new run at that setting is
+expected to fall in, 19 times in 20.
+
+$$\displaystyle \hat y_0 \pm t_{0.975,\,n-p}\; s \sqrt{1 + h_0}, \qquad h_0 = x_0^\top \left(X^\top X\right)^{-1} x_0$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat y_0`$ | the predicted output at the setting being considered | calculation: the chosen equation |
+| $`x_0`$ | that setting, coded and written as one row of the design matrix: 1, $`x_1`$, $`x_2`$, … for the model's terms | calculation: [Coding](#coding), Step 4 |
+| $`h_0`$ | the leverage of that setting: how far it is from the tested runs. It is small in the middle of the design and grows towards the edges and off the arms of the cross | calculation: the second equation above; the same as [Leverage](#leverage), Step 6, for a setting not yet run |
+| $`t_{0.975,\,n-p}`$ | the t value that leaves 2.5 % in each tail, with $`n - p`$ degrees of freedom | statistical table |
+| $`s`$ | the typical miss of that output's model | Step 5 |
+| the 1 under the root | the new run's own scatter; $`h_0`$ adds the uncertainty of the fitted equation | |
+| ± half-width | $`t_{0.975,\,n-p}\, s \sqrt{1 + h_0}`$: the distance from the prediction to either end of the interval | calculation |
+
+Each output has its own model, so its own $`n`$, $`p`$, $`s`$ and interval.
+
+#### Two sets of gates: the point gates and the cautious gates
+
+The point gates, applied to the predictions themselves, are the equation above. The cautious gates
+require the unfavourable end of each interval to pass:
+
+$$\displaystyle \widehat{\text{recovery}} - \text{half-width}_{\text{recovery}} \ge 35\ \%, \qquad \hat U_{\max} + \text{half-width}_{U} \le 20\ \text{V}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\text{half-width}_{\text{recovery}}`$, $`\text{half-width}_{U}`$ | the half-widths of the recovery and voltage intervals at that setting | calculation: [The uncertainty of each prediction](#the-uncertainty-of-each-prediction) |
+
+Both answers are reported. The point answer is the best estimate; the cautious one is the safer
+recommendation, because a new run there should still pass even if it comes out at the bad end of
+its interval. Each interval is 95 % on its own; the chance that both outputs land inside their
+intervals at once is somewhat lower.
+
+#### How close to the best is close enough
+
+The best current is a single number, but a run cannot tell apart two settings whose P differs by
+less than the experiment's own scatter. So a working window is reported with it: every current
+density that passes the gates and whose predicted P is within one pure error of the best,
+
+$$\displaystyle \hat P(i, R) \ge \hat P_{\text{best}}(R) - s_{\text{pe}}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\hat P_{\text{best}}(R)`$ | the highest predicted P that passes the gates at ratio $`R`$ | calculation: [The question, as an equation](#the-question-as-an-equation) |
+| $`s_{\text{pe}}`$ | the pure error of P: the smallest difference a run can show | Step 3 |
+
+#### Run length
+
+The tested runs all passed the same charge per membrane area, so each current density was tested
+with one run length, and the outputs (recovery above all) are whole-run results at that charge. A
+recommended current therefore comes with its run length:
+
+$$\displaystyle \tau = \frac{Q / A}{i}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\tau`$ | the run length that goes with current density $`i`$, in hours | calculation: the equation above |
+| $`Q / A`$ | the charge per membrane area the tested runs passed, in mA·h/cm² (1 mA·h = 3.6 C) | calculation: [building blocks](#building-blocks), Step 1 |
+| $`i`$ | the recommended current density, in mA/cm² | [The question, as an equation](#the-question-as-an-equation) |
+
+#### Conditions stated with every recommendation
+
+- **Run length comes with it**, as above. A recommendation is for that current *and* that run
+  length; a longer run at the same current passes more charge, and its outputs were never tested.
 - **Off the two arms of the cross, the model assumes no interaction:** that current density has
   the same effect at every ratio. That assumption is untested until runs off the arms exist.
 - **The 35 % recovery floor is provisional.** The recommendation is also shown at 30 % and 40 %,
   so the reader sees how much it depends on the floor.
+- **Where no current density passes both gates at a ratio**, that is reported, with the setting
+  that comes closest and how far it falls short. A gate that can be met only beyond the tested
+  range is reported as such, not extrapolated.
 
-Where no current density passes both gates at a ratio, that is reported with the setting that
-comes closest and how far it falls short.
+#### Finding the best setting, in simple terms
+
+> **The question is: how selective can the stack be without breaking the rules?** For one brine,
+> try every current from the lowest tested to the highest, in small steps. Throw out every current
+> where the model predicts that too little lithium is recovered, or that the stack would go over
+> 20 V. Of the currents left, take the one with the highest predicted P.
+>
+> **Why the answer moves with the brine:** more magnesium competes harder for the current, so it
+> takes more current to recover the same share of lithium. A rule like "run 6 mA/cm²" is replaced
+> by a table: for this much magnesium, run this current.
+>
+> **Why two answers:** the model's predictions are estimates with an error bar. The point answer
+> trusts the estimate; the cautious answer asks that the setting pass even if the run comes out at
+> the bad end of its error bar.
+>
+> **Why a window, not a point:** if 6 and 7 mA/cm² give P values closer than two repeat runs
+> would, no experiment could tell which is better, so both are good answers.
 
 </details>
 
 <details>
 <summary><strong>Results</strong></summary>
 
-To show: a table with one row per ratio (recommended current density, run length, predicted P
-with its interval, predicted recovery, predicted highest voltage), for the point and the cautious
-gates; a plot of predicted P against current density at several ratios with the gated-out regions
-shaded; and the recommendation at the 30 %, 35 % and 40 % floors.
+To show: a table with one row per ratio (recommended current density, working window, run length,
+predicted P with its interval, predicted recovery, predicted highest voltage), for the point and
+the cautious gates; a plot of predicted P against current density at several ratios with the
+gated-out parts marked; and the recommendation at the 30 %, 35 % and 40 % floors.
+
+#### Where the GO-10 runs stand for the search
+
+- **The search range:** current density 3.06 to 24.11 mA/cm² with AN and AP, or 3.06 to
+  12.12 mA/cm² without them; ratio 5 to 40 by mass (molar 1.43 to 11.42). AW's results would
+  extend the ratio to 60.
+- **The charge per area is the same in every GO-10 run:** 48.1 to 48.9 mA·h/cm² (AE 48.5), as
+  designed. So the run length is about 48.5 / $`i`$ hours: 16 h at 3 mA/cm², 8 h at 6, 4 h at 12
+  and 2 h at 24, as the runs were done.
+- **Only ratio 5 was tested at more than one current.** Every recommendation at another ratio and
+  a current other than 12 mA/cm² is off the arms of the cross, and rests on the no-interaction
+  assumption.
+- **Without AN and AP, nothing above 12.1 mA/cm² can be recommended.** If a high ratio needs more
+  current than that to reach the recovery floor, the answer at that ratio is "beyond the tested
+  range".
+- **At the base run, AE's measured recovery, 38.3 %, is just above the 35 % floor**, so the floor
+  is likely to decide the answer at ratio 5 and above.
 
 #### Example with made-up runs
 
 ![Predicted P against current density at four ratios, with the gated-out part dashed](figures/plan/step8-best-setting.png)
 
-| Ratio (mass) | Recommended current density | Run length | Predicted P (95 % interval) | Predicted recovery | Predicted highest voltage | Cautious recommendation |
-|---|---|---|---|---|---|---|
-| 5 | 5.8 mA/cm² | 8.3 h | 5.93 ± 0.68 | 35.2 % | 8.7 V | 6.7 mA/cm² |
-| 10 | 7.7 mA/cm² | 6.2 h | 4.89 ± 0.66 | 35.2 % | 9.2 V | 8.8 mA/cm² |
-| 20 | 10.2 mA/cm² | 4.7 h | 3.61 ± 0.69 | 35.1 % | 10.1 V | 11.8 mA/cm² |
-| 40 | 13.5 mA/cm² | 3.6 h | 2.09 ± 0.78 | 35.0 % | 11.4 V | 16.0 mA/cm² |
+| Ratio (mass) | Recommended current density | Working window | Run length | Predicted P (95 % interval) | Predicted recovery | Predicted highest voltage | Cautious recommendation |
+|---|---|---|---|---|---|---|---|
+| 5 | 5.8 mA/cm² | 5.8 to 7.8 | 8.3 h | 5.93 ± 0.68 | 35.2 % | 8.7 V | 6.7 mA/cm² |
+| 10 | 7.7 mA/cm² | 7.7 to 9.1 | 6.2 h | 4.89 ± 0.66 | 35.2 % | 9.2 V | 8.8 mA/cm² |
+| 20 | 10.2 mA/cm² | 10.2 to 11.5 | 4.7 h | 3.61 ± 0.69 | 35.1 % | 10.1 V | 11.8 mA/cm² |
+| 40 | 13.5 mA/cm² | 13.5 to 14.7 | 3.6 h | 2.09 ± 0.78 | 35.0 % | 11.4 V | 16.0 mA/cm² |
 
 Run length is the same charge per area as the experiments (48 mA·h/cm²) divided by the current
 density.
 
-Reading it: P alone would be highest near 4.8 mA/cm² at every ratio, but there the predicted
-recovery is below 35 %. So in every row the **recovery floor decides**: the recommendation is the
-lowest current that still recovers 35 %, and more magnesium needs more current. The voltage
-ceiling never comes close. The cautious recommendations sit higher, because they require the
-*lower* end of the recovery interval to clear 35 %. Ratios 10 to 40 at currents other than
-12 mA/cm² are off the arms of the cross, so those rows rest on the no-interaction assumption.
+The interval of P at ratio 5, worked: $`t_{0.975,\,6}`$ = 2.45 (10 runs, 4 coefficients),
+$`s`$ = 0.247, and the setting's leverage $`h_0`$ = 0.27, so the half-width is
+2.45 × 0.247 × √1.27 = **0.68**.
+
+Reading it:
+
+- **The recovery floor decides every row.** P alone would be highest near 4.8 mA/cm² at every
+  ratio, but there the predicted recovery is below 35 %. So the recommendation is the lowest
+  current that still recovers 35 %, and more magnesium needs more current.
+- **The voltage ceiling never comes close:** 11.4 V at most, against 20 V.
+- **The working window runs upwards** from the recommendation: up to 2 mA/cm² more costs less P
+  than a repeat run's scatter, and buys recovery.
+- **The cautious recommendations sit higher**, because they require the *lower* end of the
+  recovery interval to clear 35 %.
+- **Ratios 10 to 40 at currents other than 12 mA/cm²** are off the arms of the cross, so those
+  rows rest on the no-interaction assumption.
 
 How much the answer depends on the floor:
 
@@ -1390,34 +2047,156 @@ there is.
 <details>
 <summary><strong>How</strong></summary>
 
-For each new run: code its settings (Step 4), predict each output with the chosen equations, and
-compute the 95 % prediction interval (Step 8). Record them, dated, before the lab results arrive.
-When they arrive, work out the measured values with the Step 1 equations and check whether each
-falls inside its interval. About 95 % should; far fewer means the model is overconfident. Runs at
-settings outside the fitted range test extrapolation and are reported apart. Afterwards the new
-runs join the data, and Steps 1 to 8 are repeated.
+#### What Step 9 starts from
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| the chosen equations and their intervals | as in Step 8 | [The uncertainty of each prediction](#the-uncertainty-of-each-prediction), Step 8 |
+| $`\text{RMSE}_{\text{LOO}}`$ | the chosen model's leave-one-out error | Step 5 |
+| a new run's planned settings | the feed it will be made up with, and the current it will be run at | CSV: `runs.csv` → `li_feed_mg_l`, `mg_feed_mg_l`, `set_current_ma`, `area_cm2`<br>Model: `Run.li_feed_mg_l`, `Run.mg_feed_mg_l`, `Run.set_current_ma`, `Run.area_cm2` |
+| a new run's measured outputs | worked out exactly as for the fitted runs, once its lab results arrive | calculation: [Permselectivity](#permselectivity), [Lithium recovery](#lithium-recovery), [Highest stack voltage](#highest-stack-voltage), Step 1 |
+
+#### Writing the predictions down first
+
+For each new run, before its lab results exist: its ratio $`R`$ from the planned feed
+([Feed ratio](#feed-ratio)), its planned current density from the planned current and the area,
+both coded as in Step 4; then each output predicted with its 95 % interval (Step 8). The
+predictions are committed to the repository with their date, so the record shows they came first.
+
+Once the run is done, its measured current density may differ a little from the planned one. The
+prediction is then also worked out at the measured current density: that uses only an input, not
+an output, so it is still blind.
+
+#### Checking each run
+
+$$\displaystyle e_0 = y_0 - \hat y_0, \qquad \text{inside if } \lvert e_0 \rvert \le \text{half-width}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`y_0`$ | the new run's measured output | calculation: Step 1 |
+| $`\hat y_0`$, half-width | the prediction written down before, and its interval's half-width | Step 8 |
+| $`e_0`$ | the miss on the new run | calculation: the equation above |
+
+#### Is the model overconfident?
+
+If the intervals are honest, each new run lands outside its interval with a probability of 5 %. So
+the number of misses among the new runs follows a binomial distribution, and a count that would be
+very unlikely means the intervals are too narrow:
+
+$$\displaystyle \Pr\left(\text{at least } n_{\text{miss}} \text{ misses}\right) = \sum_{a = n_{\text{miss}}}^{n_{\text{new}}} \binom{n_{\text{new}}}{a}\, 0.05^{a}\, 0.95^{\,n_{\text{new}} - a}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`n_{\text{new}}`$ | the number of new runs inside the fitted range | count |
+| $`n_{\text{miss}}`$ | how many of them fell outside their interval | count |
+| $`a`$ | a possible number of misses, counted up from $`n_{\text{miss}}`$ to $`n_{\text{new}}`$ | notation |
+| $`\binom{n_{\text{new}}}{a}`$ | the number of ways of choosing which $`a`$ of the $`n_{\text{new}}`$ runs miss | calculation |
+| 0.05, 0.95 | the chance that one run misses its 95 % interval, and that it does not | the interval's definition |
+
+If that probability is below 5 %, the model is overconfident. What a count of misses means:
+
+| New runs | 1 miss or more | 2 or more | 3 or more |
+|---|---|---|---|
+| 3 | 14 %: nothing unusual | 0.7 %: overconfident | |
+| 4 | 19 % | 1.4 %: overconfident | |
+| 10 | 40 % | 8.6 % | 1.2 %: overconfident |
+
+So one miss in a handful of runs is expected and says nothing; two in a handful say the intervals
+are too narrow.
+
+#### Was leave-one-out honest?
+
+$$\displaystyle \text{RMSE}_{\text{new}} = \sqrt{\frac{1}{n_{\text{new}}} \sum e_0^2}$$
+
+Variables:
+
+| Symbol | What it is | Where it comes from |
+|---|---|---|
+| $`\text{RMSE}_{\text{new}}`$ | the typical miss on the new runs inside the fitted range | calculation: the equation above |
+| $`\sum`$ | add up over the new runs inside the fitted range | notation |
+
+It is set beside $`\text{RMSE}_{\text{LOO}}`$. If it is much larger, leave-one-out was optimistic:
+the model was chosen, in part, to suit the runs it was then tested on.
+
+#### Which new runs, and in what order
+
+- **First, a confirmation run at the recommended setting** (Step 8): the one prediction the
+  project's conclusion rests on.
+- **Then a run off the arms of the cross**, such as a lower current at a higher ratio: the only
+  test of the no-interaction assumption.
+- **A repeat at the end of an arm**, where leverage is highest (Step 6): it checks the run that
+  carries the curve, and adds to the pure error.
+- **Runs outside the fitted range test extrapolation** and are reported apart: the model makes no
+  promise there, so a miss is information, not a failure.
+
+Afterwards the new runs join the data, and Steps 1 to 8 are repeated: the coding of Step 4
+changes, and so may the chosen model.
+
+#### Testing on unseen runs, in simple terms
+
+> **A forecast in a sealed envelope.** Write down "tomorrow: 18 °C, give or take 2" before
+> tomorrow comes. It can only be checked fairly because it could not be adjusted after the fact.
+> Leave-one-out is a good rehearsal, but the model was chosen while every run was in view; a
+> prediction dated before the result is the real test.
+>
+> **One miss is not a failure.** A 95 % interval is meant to miss 1 time in 20. With four new
+> runs, one miss happens about one time in five by chance alone. Two misses out of four happen
+> less than 2 times in 100, and then the error bars are too narrow.
+>
+> **The run that matters most** is the one at the recommended setting: if the model's best
+> setting performs as predicted, the recommendation stands on a measured run, not only on a model.
 
 </details>
 
 <details>
 <summary><strong>Results</strong></summary>
 
-To show: a table with one row per new run: its settings, the predicted value with its interval,
-the measured value, and whether the measurement fell inside.
+To show: a table with one row per new run: its settings, whether it is inside the fitted range,
+the predicted value with its interval and the date it was written down, the measured value, and
+whether the measurement fell inside; the count of misses with its binomial probability; and
+$`\text{RMSE}_{\text{new}}`$ beside $`\text{RMSE}_{\text{LOO}}`$.
+
+#### Where the GO-10 runs stand for a blind test
+
+- **One GO-10 run awaits its lab results: AW** (12 mA/cm², ratio 60 by mass, molar 17.13). AV, AX
+  and AY, also awaiting results, are on the Pristine membrane and outside this plan.
+- **AW lies beyond the fitted ratios** (5 to 40): coded with the present scales, its ratio is
+  $`x_2`$ = 1.39. It tests extrapolation and is reported apart.
+- **Only P and recovery can be predicted blind for AW.** Its stack readings are already in the data
+  files, so its highest voltage is known.
+- **The workbook's newer runs (BA to BF) are not blind tests:** their results exist. Once in the
+  data files, they join the fit, and BD and BE the pure error (Step 3).
+- **So an in-range blind test needs new runs**, in the order above: a confirmation run at the
+  recommended setting, a run off the arms, and a repeat at 3 mA/cm².
 
 #### Example with made-up runs
 
 ![Predictions written down before the results, against the measured values](figures/plan/step9-unseen.png)
 
-| Run | Settings | Predicted P (95 % interval) | Measured later | Inside? |
-|---|---|---|---|---|
-| N1 | 12 mA/cm², ratio 5 | 4.69 ± 0.66 | 5.00 | yes |
-| N2 | 8 mA/cm², ratio 10 | 4.83 ± 0.66 | 4.96 | yes |
-| N3 | 6 mA/cm², ratio 20 | 4.41 ± 0.73 | 4.51 | yes |
-| N4 | 12 mA/cm², ratio 60 | 2.01 ± 0.85 | 2.63 | yes, but reported apart: ratio 60 is outside the fitted ratios |
+| Run | Settings | Inside the fitted range? | Predicted P (95 % interval) | Measured later | Miss $`e_0`$ | Inside its interval? |
+|---|---|---|---|---|---|---|
+| N1 | 12 mA/cm², ratio 5 | yes | 4.69 ± 0.66 | 5.00 | 0.31 | yes |
+| N2 | 8 mA/cm², ratio 10 | yes, off the arms | 4.83 ± 0.66 | 4.96 | 0.13 | yes |
+| N3 | 6 mA/cm², ratio 20 | yes, off the arms | 4.41 ± 0.73 | 4.51 | 0.10 | yes |
+| N4 | 12 mA/cm², ratio 60 | no: ratio 60 is beyond 40 | 2.01 ± 0.85 | 2.63 | 0.62 | yes, reported apart |
 
-All four fall inside their intervals. N2 and N3 sit off the arms of the cross, so they also test
-the no-interaction assumption; the made-up truth has no interaction, so they pass. With real runs,
-an off-arm run that misses its interval is the first sign that the assumption fails.
+Reading it:
+
+- **No misses among the three runs inside the range.** Nothing suggests overconfidence; with three
+  runs, even one miss (14 %) would not have.
+- **Leave-one-out was not optimistic:** $`\text{RMSE}_{\text{new}}`$ = 0.20, against
+  $`\text{RMSE}_{\text{LOO}}`$ = 0.31, so the new runs were predicted no worse than it promised.
+- **N2 and N3 sit off the arms of the cross**, so they also test the no-interaction assumption;
+  the made-up truth has no interaction, so they pass. With real runs, an off-arm run that misses
+  its interval is the first sign that the assumption fails.
+- **N4, the extrapolation, misses by twice as much as any of the others** and still falls inside its
+  wider interval. That says the trend held as far as ratio 60, not that the model can be trusted
+  there.
+- **None of the four is at the recommended setting** (5.8 mA/cm², ratio 5): that confirmation run
+  is still the one to do first.
 
 </details>
